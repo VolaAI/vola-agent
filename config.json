@@ -1,0 +1,25 @@
+{
+  "assets": "agent/assets",
+  "scripts": "agent/scripts",
+  "skills": "agent/skills",
+  "system": "agent/SYSTEM.md",
+  "memory": "agent/MEMORY.md",
+  "database": "agent/data/memory.db",
+  "llm": {
+    "default": "ollama",
+    "providers": [
+      {
+        "tag": "ollama",
+        "type": "open_ai_compatible_api",
+        "config": {
+          "url": "http://127.0.0.1:11434",
+          "model": "heretic-9b-64k:latest",
+          "num_ctx": 16384,
+          "temperature": 0.6,
+          "keep_alive": "30m",
+          "request_timeout_secs": 300
+        }
+      }
+    ]
+  }
+}

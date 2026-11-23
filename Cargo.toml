@@ -1,0 +1,21 @@
+[package]
+name = "rs-agent"
+version = "0.1.0"
+edition = "2021"
+description = "Agent client: CLI tools, skills, SQLite short-term memory"
+license = "MIT"
+
+[[bin]]
+name = "rs-agent"
+path = "src/main.rs"
+
+[dependencies]
+anyhow = "1"
+serde = { version = "1", features = ["derive"] }
+serde_json = "1"
+ureq = { version = "2.12", features = ["json"] }
+rusqlite = { version = "0.32", features = ["bundled"] }
+
+[profile.release]
+opt-level = 2
+strip = true
