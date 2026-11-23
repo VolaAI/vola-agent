@@ -77,15 +77,15 @@ value or delete the dead code.
 
 `config.json` at the project root is the primary configuration. Keys:
 
-| Key          | Meaning                                                                        |
-| ------------ | ------------------------------------------------------------------------------ |
-| `assets`     | static-asset directory                                                         |
-| `scripts`    | reusable-scripts directory                                                     |
-| `skills`     | skill library directory                                                        |
-| `system`     | system prompt file (`agent/SYSTEM.md`)                                         |
-| `memory`     | compaction prompt file (`agent/MEMORY.md`)                                     |
-| `database`   | SQLite file (`agent/data/memory.db`)                                           |
-| `llm.default` | provider tag to use (matches `providers[].tag`) |
+| Key               | Meaning                                                                                                                                                                                                 |
+| ----------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `assets`          | static-asset directory                                                                                                                                                                                  |
+| `scripts`         | reusable-scripts directory                                                                                                                                                                              |
+| `skills`          | skill library directory                                                                                                                                                                                 |
+| `system`          | system prompt file (`agent/SYSTEM.md`)                                                                                                                                                                  |
+| `memory`          | compaction prompt file (`agent/MEMORY.md`)                                                                                                                                                              |
+| `database`        | SQLite file (`agent/data/memory.db`)                                                                                                                                                                    |
+| `llm.default`     | provider tag to use (matches `providers[].tag`)                                                                                                                                                         |
 | `llm.providers[]` | `{ tag, type, config }` entries. Types: `ollama` (native), `open_ai_compatible_api`, `deepseek`. `config` has `url`, `model`, `num_ctx`, `temperature`, `keep_alive`, `request_timeout_secs`, `api_key` |
 
 Resolution rules:
@@ -150,6 +150,10 @@ When adding a config key, update all of: `FileConfig` and `Config` in `src/confi
   actionable message.
 - `rs-agent sessions` lists saved sessions; `rs-agent memory list|search|add` manages long-term
   notes; `rs-agent skills` lists the skill library.
+
+## Workspace
+
+You should put all temporary files (tools scripts or other temp files) into folder temp, do not affecting the source code directory and repository.
 
 ## Commit rules
 
