@@ -316,33 +316,49 @@ impl Config {
             return Err(anyhow!("every llm.providers entry needs a non-empty `tag`"));
         }
         let provider_type = selected.kind.trim().to_string();
-        if provider_type != "open_ai_compatible_api" {
+        if !["open_ai_compatible_api", "ollama", "deepseek"].contains(&provider_type.as_str()) {
             return Err(anyhow!(
-                "provider `{}` has unsupported type `{}`; supported type: `open_ai_compatible_api`",
+                "provider `{}` has unsupported type `{}`; supported types: `open_ai_compatible_api`, `ollama`, `deepseek`",
                 selected.tag,
                 provider_type
             ));
         }
         let provider_tag = selected.tag.clone();
         let settings = &selected.config;
+        let default_url = if provider_type == "deepseek" {
+            "https://api.deepseek.com/v1"
+        } else {
+            "http://127.0.0.1:11434"
+        };
         let base_url = normalize_url(
             &settings
                 .url
                 .clone()
                 .or_else(|| env_str("RS_AGENT_URL"))
                 .or_else(|| env_str("OLLAMA_HOST"))
-                .unwrap_or_else(|| "http://127.0.0.1:11434".to_string()),
+                .unwrap_or_else(|| default_url.to_string()),
         );
         let api_key = settings
             .api_key
             .clone()
             .or_else(|| env_str("RS_AGENT_API_KEY"))
-            .or_else(|| env_str("OPENAI_API_KEY"));
+            .or_else(|| {
+                if provider_type == "deepseek" {
+                    env_str("DEEPSEEK_API_KEY")
+                } else {
+                    env_str("OPENAI_API_KEY")
+                }
+            });
+        let default_model = if provider_type == "deepseek" {
+            "deepseek-flash"
+        } else {
+            "heretic-9b-64k:latest"
+        };
         let model = settings
             .model
             .clone()
             .or_else(|| env_str("RS_AGENT_MODEL"))
-            .unwrap_or_else(|| "heretic-9b-64k:latest".to_string());
+            .unwrap_or_else(|| default_model.to_string());
         let num_ctx: u32 = settings
             .num_ctx
             .or_else(|| env_parse("RS_AGENT_NUM_CTX"))

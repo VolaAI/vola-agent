@@ -62,13 +62,33 @@ The project-root `config.json` defines paths and the local LLM. It takes precede
     "providers": [
       {
         "tag": "ollama",
-        "type": "open_ai_compatible_api",
+        "type": "ollama",
         "config": {
           "url": "http://127.0.0.1:11434",
           "model": "heretic-9b-64k:latest",
           "num_ctx": 16384,
           "temperature": 0.6,
           "keep_alive": "30m",
+          "request_timeout_secs": 300
+        }
+      },
+      {
+        "tag": "openai",
+        "type": "open_ai_compatible_api",
+        "config": {
+          "url": "http://127.0.0.1:11434",
+          "model": "heretic-9b-64k:latest",
+          "temperature": 0.6,
+          "request_timeout_secs": 300
+        }
+      },
+      {
+        "tag": "deepseek",
+        "type": "deepseek",
+        "config": {
+          "url": "https://api.deepseek.com/v1",
+          "model": "deepseek-flash",
+          "temperature": 0.6,
           "request_timeout_secs": 300
         }
       }
@@ -79,11 +99,17 @@ The project-root `config.json` defines paths and the local LLM. It takes precede
 
 `assets` / `scripts` / `skills` / `system` / `memory` / `database` accept relative or absolute paths (`system` / `memory` point at SYSTEM.md / MEMORY.md).
 
-`llm.default` selects the provider tag to use, and `llm.providers` lists `{ "tag", "type", "config" }` entries. Only `open_ai_compatible_api` is supported: the client calls `POST {url}/v1/chat/completions` and `GET {url}/v1/models` (a `url` already ending in `/v1` is accepted). Provider `config` accepts `url`, `model`, `num_ctx`, `temperature`, `keep_alive`, `request_timeout_secs` and an optional `api_key` (sent as `Authorization: Bearer`; `RS_AGENT_API_KEY` / `OPENAI_API_KEY` are fallbacks). `num_ctx` and `keep_alive` are Ollama-specific extras passed through to Ollama's OpenAI endpoint and ignored by most other servers. A legacy `"llm": {"ollama": {...}}` block is still accepted as a provider tagged `ollama`.
+`llm.default` selects the provider tag to use, and `llm.providers` lists `{ "tag", "type", "config" }` entries. Supported types:
+
+- `ollama`: native Ollama endpoints `POST /api/chat` and `GET /api/tags`; `num_ctx`, `temperature` and `keep_alive` apply.
+- `open_ai_compatible_api`: `POST {url}/v1/chat/completions` and `GET {url}/v1/models` (a `url` already ending in `/v1` is accepted). Standard OpenAI fields only.
+- `deepseek`: DeepSeek's OpenAI-compatible API, default `url` `https://api.deepseek.com/v1` and model `deepseek-flash`. The key comes from `api_key`, `RS_AGENT_API_KEY`, then `DEEPSEEK_API_KEY`. Its `/v1/models` endpoint is treated as optional; when unavailable, `models` shows the configured model.
+
+Provider `config` accepts `url`, `model`, `num_ctx`, `temperature`, `keep_alive`, `request_timeout_secs` and an optional `api_key` (sent as `Authorization: Bearer`; `OPENAI_API_KEY` is the fallback for `open_ai_compatible_api`). A legacy `"llm": {"ollama": {...}}` block is still accepted as a provider tagged `ollama`.
 
 Priority: command line > `config.json` > environment variables > built-in defaults.
 
-Environment variables (effective only when `config.json` does not set the key): `RS_AGENT_CONFIG ASSETS SCRIPTS SKILLS PROMPT SUMMARIZER DB HOME URL MODEL NUM_CTX TEMPERATURE KEEP_ALIVE API_KEY BUDGET CMD_TIMEOUT OUTPUT_LIMIT MAX_ROUNDS MAX_TOOL_ERRORS REQUEST_TIMEOUT VERBOSE ALLOW_DANGEROUS SHELL BASH UTC_OFFSET`, plus `OLLAMA_HOST` and `OPENAI_API_KEY`.
+Environment variables (effective only when `config.json` does not set the key): `RS_AGENT_CONFIG ASSETS SCRIPTS SKILLS PROMPT SUMMARIZER DB HOME URL MODEL NUM_CTX TEMPERATURE KEEP_ALIVE API_KEY BUDGET CMD_TIMEOUT OUTPUT_LIMIT MAX_ROUNDS MAX_TOOL_ERRORS REQUEST_TIMEOUT VERBOSE ALLOW_DANGEROUS SHELL BASH UTC_OFFSET`, plus `OLLAMA_HOST`, `OPENAI_API_KEY` and `DEEPSEEK_API_KEY`.
 
 ## Implementation notes (gotchas)
 

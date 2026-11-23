@@ -203,7 +203,11 @@ fn run() -> Result<()> {
                 )
             })?;
             for m in models {
-                println!("{:<45} {}", m.id, m.owned_by);
+                let size = m
+                    .size
+                    .map(|bytes| format!("{:>6.2} GB", bytes as f64 / 1e9))
+                    .unwrap_or_default();
+                println!("{:<45} {}  {}", m.id, size, m.owned_by);
             }
             Ok(())
         }
@@ -416,7 +420,7 @@ fn print_help() {
         "RS_AGENT_CONFIG / RS_AGENT_URL / RS_AGENT_MODEL / RS_AGENT_DB / RS_AGENT_PROMPT /",
         "RS_AGENT_SUMMARIZER / RS_AGENT_ASSETS / RS_AGENT_SCRIPTS / RS_AGENT_SKILLS /",
         "RS_AGENT_HOME / RS_AGENT_NUM_CTX / RS_AGENT_TEMPERATURE / RS_AGENT_API_KEY /",
-        "OPENAI_API_KEY / RS_AGENT_BUDGET / RS_AGENT_CMD_TIMEOUT /",
+        "OPENAI_API_KEY / DEEPSEEK_API_KEY / RS_AGENT_BUDGET / RS_AGENT_CMD_TIMEOUT /",
         "RS_AGENT_OUTPUT_LIMIT / RS_AGENT_MAX_ROUNDS / RS_AGENT_MAX_TOOL_ERRORS /",
         "RS_AGENT_REQUEST_TIMEOUT / RS_AGENT_VERBOSE / RS_AGENT_ALLOW_DANGEROUS /",
         "RS_AGENT_SHELL / RS_AGENT_BASH",

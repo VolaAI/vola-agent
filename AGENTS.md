@@ -24,7 +24,7 @@ src/main.rs               argv parsing, subcommands, memory CLI, project init
 src/repl.rs               interactive REPL and slash commands
 src/agent.rs              agent loop: context budget, compaction, tool dispatch, loop guards
 src/config.rs             config.json + env + CLI precedence, path resolution, shell detection
-src/llm.rs                OpenAI-compatible client (/v1/chat/completions, /v1/models)
+src/llm.rs                LLM client: native Ollama (/api/chat), OpenAI-compatible (/v1), DeepSeek
 src/memory.rs             SQLite schema and queries: sessions, messages, notes, summaries, skills
 src/prompt.rs             system prompt assembly and compaction-prompt loading/fallback
 src/skills.rs             skill discovery, YAML frontmatter parsing, save/load, index rendering
@@ -43,12 +43,12 @@ agent/data/memory.db      SQLite database (gitignored, created on demand)
 
 ## Runtime prerequisites
 
-- Local Ollama at `http://127.0.0.1:11434` with its OpenAI-compatible `/v1` endpoints; on this machine start it with
+- Local Ollama at `http://127.0.0.1:11434` with native `/api` and OpenAI-compatible `/v1` endpoints; on this machine start it with
   `G:\Ollama\start-ollama.bat` (sets `OLLAMA_HOME`, models and KV-cache env).
 - Default model: `heretic-9b-64k:latest` (see `config.json`).
-- `chat` and `ask` call `LlmClient::ensure_ready` before creating a session: the provider must
-  be reachable and the configured model listed by `/v1/models`, otherwise startup fails with
-  an actionable message.
+- `chat` and `ask` call `LlmClient::ensure_ready` before creating a session. Ollama and
+  OpenAI-compatible providers must be reachable and list the configured model; DeepSeek only
+  requires an API key (its `/v1/models` endpoint is optional).
 
 ## Build, test, run
 
@@ -86,7 +86,7 @@ value or delete the dead code.
 | `memory`     | compaction prompt file (`agent/MEMORY.md`)                                     |
 | `database`   | SQLite file (`agent/data/memory.db`)                                           |
 | `llm.default` | provider tag to use (matches `providers[].tag`) |
-| `llm.providers[]` | `{ tag, type, config }` entries; only `open_ai_compatible_api` is supported. `config` has `url`, `model`, `num_ctx`, `temperature`, `keep_alive`, `request_timeout_secs`, `api_key` |
+| `llm.providers[]` | `{ tag, type, config }` entries. Types: `ollama` (native), `open_ai_compatible_api`, `deepseek`. `config` has `url`, `model`, `num_ctx`, `temperature`, `keep_alive`, `request_timeout_secs`, `api_key` |
 
 Resolution rules:
 
@@ -99,8 +99,8 @@ Resolution rules:
    `agent/system.md`). Legacy names (`PROMPT_INIT.md`, `agent/PROMPT_INIT.md`, `AGENT.md`,
    root `PROMPT.md`) remain supported as fallbacks.
 5. `llm.default` must match a provider tag; a provider `type` other than
-   `open_ai_compatible_api` is a startup error. A legacy `llm.ollama` block is treated as a
-   provider tagged `ollama`.
+   `open_ai_compatible_api`, `ollama` or `deepseek` is a startup error. A legacy `llm.ollama`
+   block is treated as a provider tagged `ollama`.
 6. Unknown keys are ignored; malformed JSON or a malformed value is a hard startup error.
 
 When adding a config key, update all of: `FileConfig` and `Config` in `src/config.rs`, the

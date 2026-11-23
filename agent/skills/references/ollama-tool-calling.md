@@ -1,30 +1,34 @@
 ---
 name: ollama-tool-calling
-description: Call tools through Ollama's OpenAI-compatible /v1/chat/completions endpoint, including tool_call_id pairing and the local model's quirks (reasoning, XML fallback, keep_alive)
-tags: ollama, openai-compatible, tools, function-calling
+description: Call tools through the selected provider type (native Ollama, OpenAI-compatible, or DeepSeek), including tool_call_id pairing and small-model quirks
+tags: ollama, openai-compatible, deepseek, tools, function-calling
 ---
 
-# Tool calling through the OpenAI-compatible API
+# Tool calling through the selected provider
 
 ## Request
 
-- `POST http://127.0.0.1:11434/v1/chat/completions` with `stream:false` and
-  `tools:[{type:"function",function:{name,description,parameters}}]`.
-- `config.json` selects the provider by tag and checks `type === "open_ai_compatible_api"`.
-  Provider `config` carries `url`, `model`, `temperature`, `num_ctx`, `keep_alive`,
-  `request_timeout_secs` and an optional `api_key` (Bearer token).
-- Ollama accepts the Ollama-specific `num_ctx` and `keep_alive` fields on its OpenAI-compatible
-  endpoint; other OpenAI-compatible servers normally ignore them.
+- `type: ollama` uses native `POST {url}/api/chat` with `stream:false`, `options.num_ctx`,
+  `options.temperature` and `keep_alive`.
+- `type: open_ai_compatible_api` uses `POST {url}/v1/chat/completions` with standard OpenAI
+  fields; `type: deepseek` does the same against `https://api.deepseek.com/v1` by default.
+- Send `tools:[{type:"function",function:{name,description,parameters}}]` in every case.
+- Provider `config` carries `url`, `model`, `temperature`, `num_ctx`, `keep_alive`,
+  `request_timeout_secs` and an optional `api_key` (Bearer token for OpenAI/DeepSeek).
+- DeepSeek keys come from `api_key`, `RS_AGENT_API_KEY`, then `DEEPSEEK_API_KEY`.
 
 ## Response
 
-- The assistant message is `choices[0].message`. Tool calls are
-  `choices[0].message.tool_calls[]`; `function.arguments` is a **JSON-encoded string** here.
-- `choices[0].message.reasoning` is the model's chain of thought (Ollama's `thinking`).
-  **Never** paste it back into history; only `content` and `tool_calls` are resent.
+- OpenAI/DeepSeek: the assistant message is `choices[0].message`; tool calls are
+  `choices[0].message.tool_calls[]`; `function.arguments` is a **JSON-encoded string**.
+- Native Ollama: the reply is `message`; `message.tool_calls[]` and `function.arguments` is an object.
+- Reasoning content (`reasoning` / `reasoning_content` / `thinking`) is deliberately not captured;
+  only `content` and `tool_calls` are resent.
 - Preserve the tool call `id` on the assistant message and send the matching `tool_call_id` on
-  every `role:"tool"` result. Generate a stable id if a server omits one.
-- Usage is `usage.prompt_tokens` / `usage.completion_tokens`.
+  every OpenAI/DeepSeek `role:"tool"` result. Native Ollama tool results use `tool_name` instead.
+  Generate a stable id if a server omits one.
+- Usage is `usage.prompt_tokens` / `usage.completion_tokens` for OpenAI/DeepSeek; native Ollama
+  uses `prompt_eval_count` / `eval_count` / `eval_duration`.
 
 ## Pitfalls (most visible with small local models)
 
@@ -39,4 +43,7 @@ tags: ollama, openai-compatible, tools, function-calling
 
 ## Verify
 
-`curl -s http://127.0.0.1:11434/v1/models` listing the model ids means the provider is up.
+- Native Ollama: `curl -s http://127.0.0.1:11434/api/tags` lists the models.
+- OpenAI-compatible: `curl -s http://127.0.0.1:11434/v1/models` lists the model ids.
+- DeepSeek: `POST https://api.deepseek.com/v1/chat/completions` with the key works; its
+  `/v1/models` endpoint may be unavailable, so `models` falls back to the configured model.

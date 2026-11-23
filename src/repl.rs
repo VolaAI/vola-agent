@@ -178,7 +178,11 @@ fn command(agent: &mut Agent, line: &str) -> Result<bool> {
         "/models" => match agent.client.list_models() {
             Ok(models) => {
                 for m in models {
-                    println!("  {:<45} {}", m.id, m.owned_by);
+                    let size = m
+                        .size
+                        .map(|bytes| format!("{:>6.2} GB", bytes as f64 / 1e9))
+                        .unwrap_or_default();
+                    println!("  {:<45} {}  {}", m.id, size, m.owned_by);
                 }
             }
             Err(e) => println!("failed to fetch models: {}", e),
