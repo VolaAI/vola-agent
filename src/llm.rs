@@ -444,7 +444,7 @@ impl LlmClient {
             ProviderKind::DeepSeek => {
                 if self.api_key.is_none() {
                     return Err(anyhow!(
-                        "provider `{}` needs an API key: set `api_key` in config.json, or RS_AGENT_API_KEY / DEEPSEEK_API_KEY",
+                        "provider `{}` needs an API key: set `api_key` in config.json, or VOLA_AGENT_API_KEY / DEEPSEEK_API_KEY",
                         self.tag
                     ));
                 }

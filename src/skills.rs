@@ -192,7 +192,7 @@ mod tests {
     #[test]
     fn save_and_load_roundtrip() {
         let mut dir = std::env::temp_dir();
-        dir.push(format!("rs-agent-skills-{}", std::process::id()));
+        dir.push(format!("vola-agent-skills-{}", std::process::id()));
         let _ = fs::remove_dir_all(&dir);
         let skills = Skills::new(dir.clone());
         let (meta, existed) = skills
@@ -214,7 +214,7 @@ mod tests {
     #[test]
     fn discovers_root_manager_and_references_skills() {
         let mut dir = std::env::temp_dir();
-        dir.push(format!("rs-agent-skills-tree-{}", std::process::id()));
+        dir.push(format!("vola-agent-skills-tree-{}", std::process::id()));
         let _ = fs::remove_dir_all(&dir);
         let skills = Skills::new(dir.clone());
         fs::create_dir_all(skills.references_dir()).unwrap();

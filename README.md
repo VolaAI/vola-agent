@@ -1,4 +1,4 @@
-# rs-agent
+# vola-agent
 
 An Agent written in Rust: it speaks the OpenAI-compatible `/v1/chat/completions` tools protocol (served locally by Ollama), actually runs commands on this machine, reads and writes files, maintains its own skills, and stores sessions and long-term memory in SQLite.
 
@@ -11,21 +11,21 @@ cargo build --release
 Or run the built binary directly:
 
 ```bash
-./target/release/rs-agent            # start the REPL
-./target/release/rs-agent ask "list the files in the current directory"
-./target/release/rs-agent tools      # list all tools
+./target/release/vola-agent            # start the REPL
+./target/release/vola-agent ask "list the files in the current directory"
+./target/release/vola-agent tools      # list all tools
 ```
 
-Prerequisite: Ollama runs locally at `http://127.0.0.1:11434` with its OpenAI-compatible `/v1` endpoints (`ollama serve`; on this machine `G:\Ollama\start-ollama.bat` works). The default model is `heretic-9b-64k:latest`, overridable with `--model` or `RS_AGENT_MODEL`. Paths and LLM settings live in the project-root `config.json` (see "Configuration" below). `chat` and `ask` verify that the server is reachable and the model is installed before starting; a failure is reported clearly instead of leaving an empty session behind.
+Prerequisite: Ollama runs locally at `http://127.0.0.1:11434` with its OpenAI-compatible `/v1` endpoints (`ollama serve`; on this machine `G:\Ollama\start-ollama.bat` works). The default model is `heretic-9b-64k:latest`, overridable with `--model` or `VOLA_AGENT_MODEL`. Paths and LLM settings live in the project-root `config.json` (see "Configuration" below). `chat` and `ask` verify that the server is reachable and the model is installed before starting; a failure is reported clearly instead of leaving an empty session behind.
 
 ## Capabilities
 
 | Capability         | Implementation                                                                                                                                                                                                                                                                                                                                                                                                |
 | ------------------ | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| System prompt      | `agent/SYSTEM.md` (change with `--prompt`/`RS_AGENT_PROMPT`); at runtime it is combined with environment facts, the skill index, pinned memories and a history summary                                                                                                                                                                                                                                        |
-| Compaction prompt  | `agent/MEMORY.md` (`--summarizer`/`RS_AGENT_SUMMARIZER`; read once at startup, falls back to the built-in default when missing or blank)                                                                                                                                                                                                                                                                      |
+| System prompt      | `agent/SYSTEM.md` (change with `--prompt`/`VOLA_AGENT_PROMPT`); at runtime it is combined with environment facts, the skill index, pinned memories and a history summary                                                                                                                                                                                                                                        |
+| Compaction prompt  | `agent/MEMORY.md` (`--summarizer`/`VOLA_AGENT_SUMMARIZER`; read once at startup, falls back to the built-in default when missing or blank)                                                                                                                                                                                                                                                                      |
 | Tool calling       | Sends JSON Schemas for 10 tools to the model; parses `message.tool_calls`, and also accepts the XML `<tool_call>` fallback written into the content; normalizes argument names (`command`/`cmdline` → `cmd`)                                                                                                                                                                                                  |
-| Command execution  | `run_cmd`: timeout (60s by default, per-call `timeout_secs`), non-zero exit codes are not fatal, long output is truncated from the head and tail, dangerous commands are blocklisted (`RS_AGENT_ALLOW_DANGEROUS=1` bypasses it)                                                                                                                                                                               |
+| Command execution  | `run_cmd`: timeout (60s by default, per-call `timeout_secs`), non-zero exit codes are not fatal, long output is truncated from the head and tail, dangerous commands are blocklisted (`VOLA_AGENT_ALLOW_DANGEROUS=1` bypasses it)                                                                                                                                                                               |
 | File operations    | `read_file` / `write_file` / `list_dir`; paths resolve against the working directory                                                                                                                                                                                                                                                                                                                          |
 | Skills             | `agent/skills/SKILL.md` is the library manager page (conventions for adding, updating and retiring skills); the real skills live in `agent/skills/references/*.md` (YAML frontmatter) and are the source of truth, while the DB only indexes them and counts usage; `skill_list` / `skill_view` / `skill_save` let the model curate its own library (new skills are written into `references/` automatically) |
 | Memory             | SQLite `agent/data/memory.db`: `messages` stores sessions, `notes` stores long-term memory (pinnable, pinned notes are injected into the system prompt on every turn), `summaries` stores compaction summaries, and `skills` stores the index                                                                                                                                                                 |
@@ -35,10 +35,10 @@ Prerequisite: Ollama runs locally at `http://127.0.0.1:11434` with its OpenAI-co
 ## Commands
 
 ```
-rs-agent [chat]                       Interactive REPL (default)
-rs-agent ask "<question>"             One-shot question; process to stderr, answer to stdout
-rs-agent skills | memory list|search|add | models | sessions | tools
-rs-agent init                         Create config.json, asset/script/skill dirs and prompt skeletons
+vola-agent [chat]                       Interactive REPL (default)
+vola-agent ask "<question>"             One-shot question; process to stderr, answer to stdout
+vola-agent skills | memory list|search|add | models | sessions | tools
+vola-agent init                         Create config.json, asset/script/skill dirs and prompt skeletons
 ```
 
 `memory add <content> [--pin]`, `memory search <keyword>`, `memory list`.
@@ -47,7 +47,7 @@ REPL slash commands: `/help` `/clear` `/cls` `/exit` `/new` `/sessions` `/resume
 
 ## Configuration
 
-The project-root `config.json` defines paths and the local LLM. It takes precedence over environment variables and built-in defaults (explicit command-line flags can override it for a single run). `RS_AGENT_CONFIG` can point at another file, and `--config` takes precedence. Relative paths in `config.json` resolve against the directory holding that file (relative paths from environment variables or the command line resolve against the current directory); omitted keys fall back to default file names, trying the uppercase name first and the lowercase name second (e.g. `agent/SYSTEM.md` before `agent/system.md`). Unknown keys are ignored.
+The project-root `config.json` defines paths and the local LLM. It takes precedence over environment variables and built-in defaults (explicit command-line flags can override it for a single run). `VOLA_AGENT_CONFIG` can point at another file, and `--config` takes precedence. Relative paths in `config.json` resolve against the directory holding that file (relative paths from environment variables or the command line resolve against the current directory); omitted keys fall back to default file names, trying the uppercase name first and the lowercase name second (e.g. `agent/SYSTEM.md` before `agent/system.md`). Unknown keys are ignored.
 
 ```json
 {
@@ -103,13 +103,13 @@ The project-root `config.json` defines paths and the local LLM. It takes precede
 
 - `ollama`: native Ollama endpoints `POST /api/chat` and `GET /api/tags`; `num_ctx`, `temperature` and `keep_alive` apply.
 - `open_ai_compatible_api`: `POST {url}/v1/chat/completions` and `GET {url}/v1/models` (a `url` already ending in `/v1` is accepted). Standard OpenAI fields only.
-- `deepseek`: DeepSeek's OpenAI-compatible API, default `url` `https://api.deepseek.com/v1` and model `deepseek-flash`. The key comes from `api_key`, `RS_AGENT_API_KEY`, then `DEEPSEEK_API_KEY`. Its `/v1/models` endpoint is treated as optional; when unavailable, `models` shows the configured model.
+- `deepseek`: DeepSeek's OpenAI-compatible API, default `url` `https://api.deepseek.com/v1` and model `deepseek-flash`. The key comes from `api_key`, `VOLA_AGENT_API_KEY`, then `DEEPSEEK_API_KEY`. Its `/v1/models` endpoint is treated as optional; when unavailable, `models` shows the configured model.
 
 Provider `config` accepts `url`, `model`, `num_ctx`, `temperature`, `keep_alive`, `request_timeout_secs` and an optional `api_key` (sent as `Authorization: Bearer`; `OPENAI_API_KEY` is the fallback for `open_ai_compatible_api`). A legacy `"llm": {"ollama": {...}}` block is still accepted as a provider tagged `ollama`.
 
 Priority: command line > `config.json` > environment variables > built-in defaults.
 
-Environment variables (effective only when `config.json` does not set the key): `RS_AGENT_CONFIG ASSETS SCRIPTS SKILLS PROMPT SUMMARIZER DB HOME URL MODEL NUM_CTX TEMPERATURE KEEP_ALIVE API_KEY BUDGET CMD_TIMEOUT OUTPUT_LIMIT MAX_ROUNDS MAX_TOOL_ERRORS REQUEST_TIMEOUT VERBOSE ALLOW_DANGEROUS SHELL BASH UTC_OFFSET`, plus `OLLAMA_HOST`, `OPENAI_API_KEY` and `DEEPSEEK_API_KEY`.
+Environment variables (effective only when `config.json` does not set the key): `VOLA_AGENT_CONFIG ASSETS SCRIPTS SKILLS PROMPT SUMMARIZER DB HOME URL MODEL NUM_CTX TEMPERATURE KEEP_ALIVE API_KEY BUDGET CMD_TIMEOUT OUTPUT_LIMIT MAX_ROUNDS MAX_TOOL_ERRORS REQUEST_TIMEOUT VERBOSE ALLOW_DANGEROUS SHELL BASH UTC_OFFSET`, plus `OLLAMA_HOST`, `OPENAI_API_KEY` and `DEEPSEEK_API_KEY`.
 
 ## Implementation notes (gotchas)
 

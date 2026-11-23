@@ -1,12 +1,12 @@
 [package]
-name = "rs-agent"
+name = "vola-agent"
 version = "0.1.0"
 edition = "2021"
 description = "Agent client: CLI tools, skills, SQLite short-term memory"
 license = "MIT"
 
 [[bin]]
-name = "rs-agent"
+name = "vola-agent"
 path = "src/main.rs"
 
 [dependencies]

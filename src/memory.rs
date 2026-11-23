@@ -476,7 +476,7 @@ mod tests {
     fn temp_db() -> (MemoryStore, std::path::PathBuf) {
         let mut p = std::env::temp_dir();
         let name = format!(
-            "rs-agent-test-{}-{}.db",
+            "vola-agent-test-{}-{}.db",
             std::process::id(),
             std::time::SystemTime::now()
                 .duration_since(std::time::UNIX_EPOCH)

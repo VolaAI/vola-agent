@@ -15,7 +15,7 @@ tags: ollama, openai-compatible, deepseek, tools, function-calling
 - Send `tools:[{type:"function",function:{name,description,parameters}}]` in every case.
 - Provider `config` carries `url`, `model`, `temperature`, `num_ctx`, `keep_alive`,
   `request_timeout_secs` and an optional `api_key` (Bearer token for OpenAI/DeepSeek).
-- DeepSeek keys come from `api_key`, `RS_AGENT_API_KEY`, then `DEEPSEEK_API_KEY`.
+- DeepSeek keys come from `api_key`, `VOLA_AGENT_API_KEY`, then `DEEPSEEK_API_KEY`.
 
 ## Response
 

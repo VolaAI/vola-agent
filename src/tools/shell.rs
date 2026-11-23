@@ -19,7 +19,7 @@ pub struct CmdOutcome {
     pub shell: String,
 }
 
-/// Block dangerous commands (disable with RS_AGENT_ALLOW_DANGEROUS=1).
+/// Block dangerous commands (disable with VOLA_AGENT_ALLOW_DANGEROUS=1).
 pub fn danger_reason(cmd: &str) -> Option<&'static str> {
     let c = cmd.to_ascii_lowercase();
     let checks: &[(&str, &str)] = &[

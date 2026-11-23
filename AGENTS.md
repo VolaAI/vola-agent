@@ -4,11 +4,11 @@ Guidance for coding agents working in this repository.
 
 ## What this project is
 
-`rs-agent` is An Agent written in Rust. It drives a local Ollama model through the
+`vola-agent` is An Agent written in Rust. It drives a local Ollama model through the
 OpenAI-compatible `/v1/chat/completions` tools protocol, executes commands on the host, reads and writes files, curates its
 own skill library, and keeps sessions plus long-term memory in SQLite.
 
-- Binary crate, Rust 2021, single binary `rs-agent`.
+- Binary crate, Rust 2021, single binary `vola-agent`.
 - Dependencies: `anyhow`, `serde`/`serde_json`, `ureq` (blocking HTTP with rustls), `rusqlite`
   (bundled SQLite).
 - No async runtime; all HTTP and tool work is synchronous.
@@ -62,11 +62,11 @@ On Windows, load the MSVC environment first (`vcvars64.bat`, or the recipe in
 MSVC linker.
 
 ```bash
-./target/release/rs-agent              # REPL
-./target/release/rs-agent ask "..."    # one-shot
-./target/release/rs-agent models       # Ollama models
-./target/release/rs-agent skills       # skill library
-./target/release/rs-agent sessions | tools | init
+./target/release/vola-agent              # REPL
+./target/release/vola-agent ask "..."    # one-shot
+./target/release/vola-agent models       # Ollama models
+./target/release/vola-agent skills       # skill library
+./target/release/vola-agent sessions | tools | init
 ```
 
 Keep the tree warning-free: `cargo check --all-targets` and `cargo test` must report no
@@ -90,7 +90,7 @@ value or delete the dead code.
 
 Resolution rules:
 
-1. Discovery: `RS_AGENT_CONFIG`, project-root `config.json`, working-directory `config.json`,
+1. Discovery: `VOLA_AGENT_CONFIG`, project-root `config.json`, working-directory `config.json`,
    executable directory, then two levels above the executable (`target/release` layout).
 2. Priority: command-line flags > `config.json` > environment variables > built-in defaults.
 3. Paths in `config.json` are relative to the config file's directory; relative env/CLI paths
@@ -120,7 +120,7 @@ When adding a config key, update all of: `FileConfig` and `Config` in `src/confi
   with `memory_search`.
 - Loop guards: round limit (`max_rounds`, default 8), consecutive tool-error limit (default 3),
   and the same tool call repeated twice is rejected as a loop.
-- `run_cmd` blocks dangerous commands unless `RS_AGENT_ALLOW_DANGEROUS=1`; output is truncated
+- `run_cmd` blocks dangerous commands unless `VOLA_AGENT_ALLOW_DANGEROUS=1`; output is truncated
   head/tail and command timeout defaults to 60s.
 - Tool-call and file relative paths resolve against `cfg.home`.
 - The binary must remain runnable without a pre-existing DB: `MemoryStore::open` migrates the
@@ -140,16 +140,16 @@ When adding a config key, update all of: `FileConfig` and `Config` in `src/confi
 - Keep user-facing behavior documented; update `README.md` when commands, config keys, file
   names or defaults change.
 
-## Invoking rs-agent from another agent
+## Invoking vola-agent from another agent
 
-- One-shot: `rs-agent ask "<prompt>"`; the answer goes to stdout, tool/progress logs to stderr.
-- Interactive: `rs-agent` or `rs-agent chat` reads requests from stdin and writes replies to stdout.
+- One-shot: `vola-agent ask "<prompt>"`; the answer goes to stdout, tool/progress logs to stderr.
+- Interactive: `vola-agent` or `vola-agent chat` reads requests from stdin and writes replies to stdout.
 - Useful flags: `--model`, `--url`, `--num-ctx`, `--config <file>`, `--session <id>`, `--verbose`,
   `--allow-dangerous`.
 - Exit code is non-zero on startup or runtime failure; errors are printed to stderr with an
   actionable message.
-- `rs-agent sessions` lists saved sessions; `rs-agent memory list|search|add` manages long-term
-  notes; `rs-agent skills` lists the skill library.
+- `vola-agent sessions` lists saved sessions; `vola-agent memory list|search|add` manages long-term
+  notes; `vola-agent skills` lists the skill library.
 
 ## Workspace
 

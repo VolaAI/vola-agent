@@ -108,7 +108,7 @@ fn env_flag(key: &str) -> bool {
 }
 
 fn find_bash() -> Option<PathBuf> {
-    if let Some(p) = env_str("RS_AGENT_BASH") {
+    if let Some(p) = env_str("VOLA_AGENT_BASH") {
         let pb = PathBuf::from(p);
         if pb.exists() {
             return Some(pb);
@@ -158,10 +158,10 @@ fn is_project_root(dir: &Path) -> bool {
         || dir.join("AGENT.md").is_file()
 }
 
-/// Locate the project root: RS_AGENT_HOME first, then the current directory (when it holds
+/// Locate the project root: VOLA_AGENT_HOME first, then the current directory (when it holds
 /// the agent assets), finally the executable's directory.
 fn resolve_home() -> PathBuf {
-    if let Some(p) = env_str("RS_AGENT_HOME") {
+    if let Some(p) = env_str("VOLA_AGENT_HOME") {
         let pb = PathBuf::from(p);
         if pb.exists() {
             return pb;
@@ -203,7 +203,7 @@ impl Config {
         home.join("agent/MEMORY.md")
     }
 
-    /// Load `config.json` (from `RS_AGENT_CONFIG`, the project root, the working directory,
+    /// Load `config.json` (from `VOLA_AGENT_CONFIG`, the project root, the working directory,
     /// or the executable's neighborhood), then apply environment overrides.
     pub fn load() -> Result<Config> {
         Self::load_from(None)
@@ -222,10 +222,10 @@ impl Config {
             }
             None => load_file_config(&home)?,
         };
-        // Running target/release/rs-agent.exe from outside the project still finds the root:
+        // Running target/release/vola-agent.exe from outside the project still finds the root:
         // a config.json two levels above the executable marks it.
         if let Some(dir) = config_path.as_ref().and_then(|p| p.parent()) {
-            if env_str("RS_AGENT_HOME").is_none() && !is_project_root(&home) {
+            if env_str("VOLA_AGENT_HOME").is_none() && !is_project_root(&home) {
                 home = dir.to_path_buf();
             }
         }
@@ -236,25 +236,25 @@ impl Config {
             .unwrap_or_else(|| home.clone());
 
         let assets_dir = resolve_path(
-            "RS_AGENT_ASSETS",
+            "VOLA_AGENT_ASSETS",
             file.assets.as_deref(),
             &base,
             &["agent/assets", "assets"],
         );
         let scripts_dir = resolve_path(
-            "RS_AGENT_SCRIPTS",
+            "VOLA_AGENT_SCRIPTS",
             file.scripts.as_deref(),
             &base,
             &["agent/scripts", "scripts"],
         );
         let skills_dir = resolve_path(
-            "RS_AGENT_SKILLS",
+            "VOLA_AGENT_SKILLS",
             file.skills.as_deref(),
             &base,
             &["agent/skills", "skills"],
         );
         let prompt_path = resolve_path(
-            "RS_AGENT_PROMPT",
+            "VOLA_AGENT_PROMPT",
             file.system.as_deref(),
             &base,
             &[
@@ -266,7 +266,7 @@ impl Config {
             ],
         );
         let summarizer_path = resolve_path(
-            "RS_AGENT_SUMMARIZER",
+            "VOLA_AGENT_SUMMARIZER",
             file.memory.as_deref(),
             &base,
             &[
@@ -280,7 +280,7 @@ impl Config {
             ],
         );
         let db_path = resolve_path(
-            "RS_AGENT_DB",
+            "VOLA_AGENT_DB",
             file.database.as_deref(),
             &base,
             &["agent/data/memory.db", "data/memory.db"],
@@ -334,14 +334,14 @@ impl Config {
             &settings
                 .url
                 .clone()
-                .or_else(|| env_str("RS_AGENT_URL"))
+                .or_else(|| env_str("VOLA_AGENT_URL"))
                 .or_else(|| env_str("OLLAMA_HOST"))
                 .unwrap_or_else(|| default_url.to_string()),
         );
         let api_key = settings
             .api_key
             .clone()
-            .or_else(|| env_str("RS_AGENT_API_KEY"))
+            .or_else(|| env_str("VOLA_AGENT_API_KEY"))
             .or_else(|| {
                 if provider_type == "deepseek" {
                     env_str("DEEPSEEK_API_KEY")
@@ -357,16 +357,16 @@ impl Config {
         let model = settings
             .model
             .clone()
-            .or_else(|| env_str("RS_AGENT_MODEL"))
+            .or_else(|| env_str("VOLA_AGENT_MODEL"))
             .unwrap_or_else(|| default_model.to_string());
         let num_ctx: u32 = settings
             .num_ctx
-            .or_else(|| env_parse("RS_AGENT_NUM_CTX"))
+            .or_else(|| env_parse("VOLA_AGENT_NUM_CTX"))
             .unwrap_or(16_384);
-        let output_limit: usize = env_parse("RS_AGENT_OUTPUT_LIMIT").unwrap_or(6_000);
-        let budget_chars: usize = env_parse("RS_AGENT_BUDGET").unwrap_or((num_ctx as usize) * 2);
+        let output_limit: usize = env_parse("VOLA_AGENT_OUTPUT_LIMIT").unwrap_or(6_000);
+        let budget_chars: usize = env_parse("VOLA_AGENT_BUDGET").unwrap_or((num_ctx as usize) * 2);
         let bash = find_bash();
-        let shell = match env_str("RS_AGENT_SHELL").map(|v| v.to_ascii_lowercase()) {
+        let shell = match env_str("VOLA_AGENT_SHELL").map(|v| v.to_ascii_lowercase()) {
             Some(ref v) if v == "cmd" => ShellKind::Cmd,
             Some(ref v) if v == "powershell" || v == "pwsh" => ShellKind::PowerShell,
             Some(ref v) if v == "bash" || v == "sh" => ShellKind::Bash,
@@ -391,20 +391,20 @@ impl Config {
             num_ctx,
             temperature: settings
                 .temperature
-                .or_else(|| env_parse("RS_AGENT_TEMPERATURE"))
+                .or_else(|| env_parse("VOLA_AGENT_TEMPERATURE"))
                 .unwrap_or(0.6),
             keep_alive: settings
                 .keep_alive
                 .clone()
-                .or_else(|| env_str("RS_AGENT_KEEP_ALIVE"))
+                .or_else(|| env_str("VOLA_AGENT_KEEP_ALIVE"))
                 .unwrap_or_else(|| "30m".to_string()),
             request_timeout_secs: settings
                 .request_timeout_secs
-                .or_else(|| env_parse("RS_AGENT_REQUEST_TIMEOUT"))
+                .or_else(|| env_parse("VOLA_AGENT_REQUEST_TIMEOUT"))
                 .unwrap_or(300),
-            max_rounds: env_parse("RS_AGENT_MAX_ROUNDS").unwrap_or(8),
-            max_tool_errors: env_parse("RS_AGENT_MAX_TOOL_ERRORS").unwrap_or(3),
-            cmd_timeout_secs: env_parse("RS_AGENT_CMD_TIMEOUT").unwrap_or(60),
+            max_rounds: env_parse("VOLA_AGENT_MAX_ROUNDS").unwrap_or(8),
+            max_tool_errors: env_parse("VOLA_AGENT_MAX_TOOL_ERRORS").unwrap_or(3),
+            cmd_timeout_secs: env_parse("VOLA_AGENT_CMD_TIMEOUT").unwrap_or(60),
             output_limit,
             budget_chars,
             db_path,
@@ -415,8 +415,8 @@ impl Config {
             summarizer_path,
             shell,
             bash_path: bash,
-            verbose: env_flag("RS_AGENT_VERBOSE"),
-            allow_dangerous: env_flag("RS_AGENT_ALLOW_DANGEROUS"),
+            verbose: env_flag("VOLA_AGENT_VERBOSE"),
+            allow_dangerous: env_flag("VOLA_AGENT_ALLOW_DANGEROUS"),
         })
     }
 
@@ -465,11 +465,11 @@ fn resolve_path(
     base.join(defaults[0])
 }
 
-/// Config discovery order: RS_AGENT_CONFIG, the project root, the working directory, the
+/// Config discovery order: VOLA_AGENT_CONFIG, the project root, the working directory, the
 /// executable's directory, then the root two levels above it (the `target/release` layout).
 fn config_candidates(home: &Path) -> Vec<PathBuf> {
     let mut out = Vec::new();
-    if let Some(p) = env_str("RS_AGENT_CONFIG") {
+    if let Some(p) = env_str("VOLA_AGENT_CONFIG") {
         out.push(PathBuf::from(p));
     }
     out.push(home.join("config.json"));
@@ -565,7 +565,7 @@ mod tests {
         let base = Path::new("E:/proj");
         assert_eq!(
             resolve_path(
-                "RS_AGENT_NO_SUCH_KEY",
+                "VOLA_AGENT_NO_SUCH_KEY",
                 Some("assets/icons"),
                 base,
                 &["assets"]
@@ -574,7 +574,7 @@ mod tests {
         );
         assert_eq!(
             resolve_path(
-                "RS_AGENT_NO_SUCH_KEY",
+                "VOLA_AGENT_NO_SUCH_KEY",
                 Some("D:/assets/icons"),
                 base,
                 &["assets"]
@@ -582,7 +582,7 @@ mod tests {
             PathBuf::from("D:/assets/icons")
         );
         assert_eq!(
-            resolve_path("RS_AGENT_NO_SUCH_KEY", None, base, &["some/deep/missing"]),
+            resolve_path("VOLA_AGENT_NO_SUCH_KEY", None, base, &["some/deep/missing"]),
             PathBuf::from("E:/proj/some/deep/missing")
         );
     }

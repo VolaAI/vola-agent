@@ -20,9 +20,9 @@ fn civil_from_days(z: i64) -> (i64, u32, u32) {
     (if m <= 2 { y + 1 } else { y }, m, d)
 }
 
-/// Show a timestamp in UTC+8 (override with RS_AGENT_UTC_OFFSET, in hours).
+/// Show a timestamp in UTC+8 (override with VOLA_AGENT_UTC_OFFSET, in hours).
 pub fn fmt_time(ts: i64) -> String {
-    let offset: i64 = std::env::var("RS_AGENT_UTC_OFFSET")
+    let offset: i64 = std::env::var("VOLA_AGENT_UTC_OFFSET")
         .ok()
         .and_then(|v| v.parse().ok())
         .unwrap_or(8);

@@ -136,7 +136,7 @@ pub fn build(
 
 fn offset_str(cfg: &Config) -> String {
     let _ = cfg;
-    match std::env::var("RS_AGENT_UTC_OFFSET").ok().and_then(|v| v.parse::<i32>().ok()) {
+    match std::env::var("VOLA_AGENT_UTC_OFFSET").ok().and_then(|v| v.parse::<i32>().ok()) {
         Some(v) if v >= 0 => format!("+{}", v),
         Some(v) => v.to_string(),
         None => "+8".to_string(),

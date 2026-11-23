@@ -8,7 +8,7 @@ No pleasantries, no invention. Write "unverified" when you are unsure. Output th
 Editor note (this block is sent to the model too, keep it short):
 
 - This file is the system prompt used by `/compress` and by automatic compression; it is read at startup.
-- Override with the RS_AGENT_SUMMARIZER environment variable or `--summarizer <path>`.
+- Override with the VOLA_AGENT_SUMMARIZER environment variable or `--summarizer <path>`.
 - If the file is missing or blank, the binary falls back to DEFAULT_SUMMARIZER in src/prompt.rs.
 - Editing this file is editing the compression policy: raise the limit to keep more detail, lower it to save context.
 -->

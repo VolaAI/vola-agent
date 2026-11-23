@@ -59,7 +59,7 @@ pub fn run(mut agent: Agent) -> Result<()> {
 fn banner(agent: &Agent) {
     let cfg = &agent.cfg;
     let skills = agent.skills.discover().len();
-    println!("rs-agent · local Ollama agent (Rust)");
+    println!("vola-agent · local Ollama agent (Rust)");
     println!("{}", cfg.summary());
     println!(
         "working dir {} · {} skills · session #{} · prompt {} · compaction prompt {}",

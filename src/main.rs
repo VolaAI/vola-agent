@@ -1,4 +1,4 @@
-//! rs-agent: a command-line client for a local Ollama agent.
+//! vola-agent: a command-line client for a local Ollama agent.
 
 mod agent;
 mod config;
@@ -64,7 +64,7 @@ fn run() -> Result<()> {
                 return Ok(());
             }
             "--version" | "-V" => {
-                println!("rs-agent {}", env!("CARGO_PKG_VERSION"));
+                println!("vola-agent {}", env!("CARGO_PKG_VERSION"));
                 return Ok(());
             }
             other => bail!("unknown option {} (see -h for usage)", other),
@@ -144,7 +144,7 @@ fn run() -> Result<()> {
         "ask" => {
             let text = args.join(" ");
             if text.trim().is_empty() {
-                bail!("usage: rs-agent ask \"your question\"");
+                bail!("usage: vola-agent ask \"your question\"");
             }
             let mut agent = agent::Agent::new(cfg, opts.session)?;
             let report = agent.respond(&text, |s| eprintln!("{}", s))?;
@@ -275,7 +275,7 @@ fn memory_cmd(cfg: &Config, args: &[String]) -> Result<()> {
         "add" => {
             let content = args[1..].join(" ");
             if content.trim().is_empty() {
-                bail!("usage: rs-agent memory add <content> [--pin]");
+                bail!("usage: vola-agent memory add <content> [--pin]");
             }
             let pinned = args.iter().any(|a| a == "--pin");
             let text = content.replace("--pin", "").trim().to_string();
@@ -382,23 +382,23 @@ fn init_project(cfg: &Config) -> Result<()> {
 
 fn print_help() {
     println!(
-        "rs-agent {} \u{2014} local Ollama agent (Rust)",
+        "vola-agent {} \u{2014} local Ollama agent (Rust)",
         env!("CARGO_PKG_VERSION")
     );
     println!("\nusage:");
     for (cmd, desc) in [
-        ("rs-agent", "enter interactive mode (default command chat)"),
-        ("rs-agent ask \"<question>\"", "one-shot question"),
-        ("rs-agent skills", "list skills"),
+        ("vola-agent", "enter interactive mode (default command chat)"),
+        ("vola-agent ask \"<question>\"", "one-shot question"),
+        ("vola-agent skills", "list skills"),
         (
-            "rs-agent memory add <content> [--pin] | search <keyword> | delete <id> | list",
+            "vola-agent memory add <content> [--pin] | search <keyword> | delete <id> | list",
             "",
         ),
-        ("rs-agent models", "list models from the selected provider"),
-        ("rs-agent sessions", "list past sessions"),
-        ("rs-agent tools", "list tools"),
+        ("vola-agent models", "list models from the selected provider"),
+        ("vola-agent sessions", "list past sessions"),
+        ("vola-agent tools", "list tools"),
         (
-            "rs-agent init",
+            "vola-agent init",
             "create config.json, asset dirs and prompt skeletons",
         ),
     ] {
@@ -417,13 +417,13 @@ fn print_help() {
     }
     println!("\nenvironment:");
     for chunk in [
-        "RS_AGENT_CONFIG / RS_AGENT_URL / RS_AGENT_MODEL / RS_AGENT_DB / RS_AGENT_PROMPT /",
-        "RS_AGENT_SUMMARIZER / RS_AGENT_ASSETS / RS_AGENT_SCRIPTS / RS_AGENT_SKILLS /",
-        "RS_AGENT_HOME / RS_AGENT_NUM_CTX / RS_AGENT_TEMPERATURE / RS_AGENT_API_KEY /",
-        "OPENAI_API_KEY / DEEPSEEK_API_KEY / RS_AGENT_BUDGET / RS_AGENT_CMD_TIMEOUT /",
-        "RS_AGENT_OUTPUT_LIMIT / RS_AGENT_MAX_ROUNDS / RS_AGENT_MAX_TOOL_ERRORS /",
-        "RS_AGENT_REQUEST_TIMEOUT / RS_AGENT_VERBOSE / RS_AGENT_ALLOW_DANGEROUS /",
-        "RS_AGENT_SHELL / RS_AGENT_BASH",
+        "VOLA_AGENT_CONFIG / VOLA_AGENT_URL / VOLA_AGENT_MODEL / VOLA_AGENT_DB / VOLA_AGENT_PROMPT /",
+        "VOLA_AGENT_SUMMARIZER / VOLA_AGENT_ASSETS / VOLA_AGENT_SCRIPTS / VOLA_AGENT_SKILLS /",
+        "VOLA_AGENT_HOME / VOLA_AGENT_NUM_CTX / VOLA_AGENT_TEMPERATURE / VOLA_AGENT_API_KEY /",
+        "OPENAI_API_KEY / DEEPSEEK_API_KEY / VOLA_AGENT_BUDGET / VOLA_AGENT_CMD_TIMEOUT /",
+        "VOLA_AGENT_OUTPUT_LIMIT / VOLA_AGENT_MAX_ROUNDS / VOLA_AGENT_MAX_TOOL_ERRORS /",
+        "VOLA_AGENT_REQUEST_TIMEOUT / VOLA_AGENT_VERBOSE / VOLA_AGENT_ALLOW_DANGEROUS /",
+        "VOLA_AGENT_SHELL / VOLA_AGENT_BASH",
     ] {
         println!("  {}", chunk);
     }
