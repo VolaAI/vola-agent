@@ -43,7 +43,7 @@ vola-agent init                         Create config.json, asset/script/skill d
 
 `memory add <content> [--pin]`, `memory search <keyword>`, `memory list`.
 
-REPL slash commands: `/help` `/clear` `/cls` `/exit` `/new` `/sessions` `/resume` `/skills` `/skill <name>` `/model` `/models` `/ctx` `/compress` `/history [n]` `/note <fact>` `/notes [keyword]` `/tools` `/db` `/!<command>`.
+REPL slash commands: `/help` `/clear` `/cls` `/exit` `/new` `/sessions` `/resume` `/skills` `/skill <name>` `/model` `/models` `/ctx` `/compress` `/history [n]` `/note <fact>` `/notes [keyword]` `/memory list [keyword]` `/memory del <id>` `/tools` `/db` `/!<command>`.
 
 Ctrl+C: at the `you ›` prompt it quits; while the agent is working it cancels the current turn and returns to the prompt (a command the agent is running has its process tree killed). The cancelled model request is abandoned rather than written to the session.
 

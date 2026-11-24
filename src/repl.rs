@@ -7,7 +7,7 @@ use std::sync::{Arc, Mutex};
 use std::time::{Duration, Instant};
 
 use crate::agent::{Agent, TurnProgress};
-use crate::memory::{render_message, session_line};
+use crate::memory::{render_message, session_line, NoteRow};
 use crate::tools;
 use crate::util::{fmt_time, snippet};
 
@@ -262,6 +262,26 @@ fn compact(n: u64) -> String {
     }
 }
 
+fn print_notes(rows: &[NoteRow]) {
+    if rows.is_empty() {
+        println!("(no matching memories)");
+    }
+    for r in rows {
+        println!(
+            "  id={}{} {} [{}] {}\n    {}",
+            r.id,
+            r.key
+                .as_deref()
+                .map(|k| format!(" ({})", k))
+                .unwrap_or_default(),
+            if r.pinned { "📌" } else { "  " },
+            r.tags,
+            fmt_time(r.updated_at),
+            r.content
+        );
+    }
+}
+
 fn banner(agent: &Agent) {
     let cfg = &agent.cfg;
     let skills = agent.skills.discover().len();
@@ -302,6 +322,8 @@ fn command(agent: &mut Agent, line: &str) -> Result<bool> {
                 ("/history [n]", "recent messages (including tool results)"),
                 ("/note <text>", "save a pinned long-term memory"),
                 ("/notes [keyword]", "search long-term memory"),
+                ("/memory list [kw]", "list long-term memories"),
+                ("/memory del <id>", "delete a long-term memory by id"),
                 ("/tools", "list the tools"),
                 ("/! <command>", "run shell directly (bypassing the model)"),
                 ("/db", "database stats"),
@@ -470,22 +492,36 @@ fn command(agent: &mut Agent, line: &str) -> Result<bool> {
             } else {
                 agent.store.search_notes(rest, 20)?
             };
-            if rows.is_empty() {
-                println!("(no matching memories)");
-            }
-            for r in rows {
-                println!(
-                    "  id={}{} {} [{}] {}\n    {}",
-                    r.id,
-                    r.key
-                        .as_deref()
-                        .map(|k| format!(" ({})", k))
-                        .unwrap_or_default(),
-                    if r.pinned { "📌" } else { "  " },
-                    r.tags,
-                    fmt_time(r.updated_at),
-                    r.content
-                );
+            print_notes(&rows);
+        }
+        "/memory" => {
+            let (sub, arg) = match rest.split_once(char::is_whitespace) {
+                Some((s, a)) => (s, a.trim()),
+                None => (rest, ""),
+            };
+            match sub {
+                "" | "list" => {
+                    let rows = if arg.is_empty() {
+                        agent.store.search_notes("", 50)?
+                    } else {
+                        agent.store.search_notes(arg, 20)?
+                    };
+                    print_notes(&rows);
+                }
+                "del" | "delete" => {
+                    let id: i64 = arg
+                        .parse()
+                        .map_err(|_| anyhow::anyhow!("usage: /memory del <id>"))?;
+                    if agent.store.delete_note(id)? {
+                        println!("deleted memory id={}", id);
+                    } else {
+                        println!("no memory with id={}", id);
+                    }
+                }
+                other => println!(
+                    "usage: /memory list [keyword] | /memory del <id> (unknown subcommand: {})",
+                    other
+                ),
             }
         }
         "/tools" => {
