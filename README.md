@@ -22,10 +22,10 @@ Prerequisite: Ollama runs locally at `http://127.0.0.1:11434` with its OpenAI-co
 
 | Capability         | Implementation                                                                                                                                                                                                                                                                                                                                                                                                |
 | ------------------ | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| System prompt      | `agent/SYSTEM.md` (change with `--prompt`/`VOLA_AGENT_PROMPT`); at runtime it is combined with environment facts, the skill index, pinned memories and a history summary                                                                                                                                                                                                                                        |
-| Compaction prompt  | `agent/MEMORY.md` (`--summarizer`/`VOLA_AGENT_SUMMARIZER`; read once at startup, falls back to the built-in default when missing or blank)                                                                                                                                                                                                                                                                      |
+| System prompt      | `agent/SYSTEM.md` (change with `--prompt`/`VOLA_AGENT_PROMPT`); at runtime it is combined with environment facts, the skill index, pinned memories and a history summary                                                                                                                                                                                                                                      |
+| Compaction prompt  | `agent/MEMORY.md` (`--summarizer`/`VOLA_AGENT_SUMMARIZER`; read once at startup, falls back to the built-in default when missing or blank)                                                                                                                                                                                                                                                                    |
 | Tool calling       | Sends JSON Schemas for 10 tools to the model; parses `message.tool_calls`, and also accepts the XML `<tool_call>` fallback written into the content; normalizes argument names (`command`/`cmdline` → `cmd`)                                                                                                                                                                                                  |
-| Command execution  | `run_cmd`: timeout (60s by default, per-call `timeout_secs`), non-zero exit codes are not fatal, long output is truncated from the head and tail, dangerous commands are blocklisted (`VOLA_AGENT_ALLOW_DANGEROUS=1` bypasses it)                                                                                                                                                                               |
+| Command execution  | `run_cmd`: timeout (60s by default, per-call `timeout_secs`), non-zero exit codes are not fatal, long output is truncated from the head and tail, dangerous commands are blocklisted (`VOLA_AGENT_ALLOW_DANGEROUS=1` bypasses it)                                                                                                                                                                             |
 | File operations    | `read_file` / `write_file` / `list_dir`; paths resolve against the working directory                                                                                                                                                                                                                                                                                                                          |
 | Skills             | `agent/skills/SKILL.md` is the library manager page (conventions for adding, updating and retiring skills); the real skills live in `agent/skills/references/*.md` (YAML frontmatter) and are the source of truth, while the DB only indexes them and counts usage; `skill_list` / `skill_view` / `skill_save` let the model curate its own library (new skills are written into `references/` automatically) |
 | Memory             | SQLite `agent/data/memory.db`: `messages` stores sessions, `notes` stores long-term memory (pinnable, pinned notes are injected into the system prompt on every turn), `summaries` stores compaction summaries, and `skills` stores the index                                                                                                                                                                 |
@@ -44,6 +44,10 @@ vola-agent init                         Create config.json, asset/script/skill d
 `memory add <content> [--pin]`, `memory search <keyword>`, `memory list`.
 
 REPL slash commands: `/help` `/clear` `/cls` `/exit` `/new` `/sessions` `/resume` `/skills` `/skill <name>` `/model` `/models` `/ctx` `/compress` `/history [n]` `/note <fact>` `/notes [keyword]` `/tools` `/db` `/!<command>`.
+
+Ctrl+C: at the `you ›` prompt it quits; while the agent is working it cancels the current turn and returns to the prompt (a command the agent is running has its process tree killed). The cancelled model request is abandoned rather than written to the session.
+
+While a turn runs, a left-margin spinner shows elapsed time, the live context size (`ctx` chars and % of the compaction budget) and token usage (`tok` = prompt tokens against `num_ctx`, `out` = completion tokens) as each round's provider response reports it; the first round shows an estimate (`tok est~`) until exact usage arrives.
 
 ## Configuration
 
@@ -119,13 +123,16 @@ Environment variables (effective only when `config.json` does not set the key): 
 - **Argument name normalization**: models often send `command` / `cmdline` / `shell_cmd`; all are mapped to `cmd`.
 - **Empty-reply fallback**: when the model only calls tools and gives no conclusion, the client re-asks once with tools disabled; if that is still empty, it returns the raw tool results instead of showing "(the model produced no output)".
 - **Compaction cut point**: cut only before a `user` message, so an assistant `tool_calls` message is never separated from the `tool` results that follow it (Ollama would answer with a 400).
+- **Windows console encoding**: on startup the REPL switches the attached console to UTF-8 and enables ANSI/VT processing (for the in-place status line); both are restored on exit. Child-process and file text is decoded as UTF-8 with a fallback to the Windows ANSI code page, so PowerShell errors and Chinese output no longer turn into `�`. PowerShell is also told to emit UTF-8 (`[Console]::OutputEncoding`), and `cmd` runs under `chcp 65001`.
 
 ## Layout
 
 ```
 src/main.rs     argv parsing and subcommands
-src/repl.rs     interactive loop and slash commands
-src/agent.rs    main loop: compaction, tool dispatch, error counting
+src/repl.rs     interactive loop, slash commands, Ctrl+C routing
+src/agent.rs    main loop: compaction, tool dispatch, error counting, interruptible requests
+src/console.rs  Windows console UTF-8 setup (set/restore the code page)
+src/interrupt.rs Ctrl+C state: prompt quits, work cancels
 src/llm.rs      OpenAI-compatible HTTP (/v1/chat/completions, /v1/models)
 src/memory.rs   SQLite: messages, notes, summaries, skill index
 src/skills.rs   skill file discovery and frontmatter parsing

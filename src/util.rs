@@ -82,6 +82,66 @@ pub fn char_len(s: &str) -> usize {
     s.chars().count()
 }
 
+/// Decode text captured from a child process or a file: UTF-8 when valid, otherwise the
+/// Windows ANSI code page (GBK on Chinese Windows), which is what PowerShell and legacy
+/// tools emit when their output is redirected. Falls back to lossy UTF-8 elsewhere.
+pub fn decode_text(bytes: &[u8]) -> String {
+    match std::str::from_utf8(bytes) {
+        Ok(s) => s.to_string(),
+        Err(_) => decode_ansi(bytes).unwrap_or_else(|| String::from_utf8_lossy(bytes).into_owned()),
+    }
+}
+
+#[cfg(windows)]
+#[link(name = "kernel32")]
+extern "system" {
+    fn MultiByteToWideChar(
+        code_page: u32,
+        flags: u32,
+        bytes: *const u8,
+        byte_len: i32,
+        out: *mut u16,
+        out_len: i32,
+    ) -> i32;
+}
+
+#[cfg(windows)]
+fn decode_ansi(bytes: &[u8]) -> Option<String> {
+    // CP_ACP: the process's ANSI code page (936 on Simplified Chinese Windows).
+    const CP_ACP: u32 = 0;
+    if bytes.is_empty() {
+        return Some(String::new());
+    }
+    let byte_len = bytes.len() as i32;
+    let wide_len = unsafe {
+        MultiByteToWideChar(CP_ACP, 0, bytes.as_ptr(), byte_len, std::ptr::null_mut(), 0)
+    };
+    if wide_len <= 0 {
+        return None;
+    }
+    let mut wide = vec![0u16; wide_len as usize];
+    let written = unsafe {
+        MultiByteToWideChar(
+            CP_ACP,
+            0,
+            bytes.as_ptr(),
+            byte_len,
+            wide.as_mut_ptr(),
+            wide_len,
+        )
+    };
+    if written <= 0 {
+        return None;
+    }
+    wide.truncate(written as usize);
+    Some(String::from_utf16_lossy(&wide))
+}
+
+#[cfg(not(windows))]
+fn decode_ansi(_bytes: &[u8]) -> Option<String> {
+    None
+}
+
 /// Reduce any name to a safe file/skill name: lowercase, alphanumerics and '-' only.
 pub fn slugify(name: &str) -> String {
     let mut out = String::new();
@@ -143,5 +203,33 @@ mod tests {
     fn slug_and_time() {
         assert_eq!(slugify("Rust Build/Env"), "rust-build-env");
         assert_eq!(fmt_time(0).starts_with("1970-01-01"), true);
+    }
+
+    #[test]
+    fn utf8_text_is_not_transcoded() {
+        assert_eq!(decode_text("深圳天气 ☁️".as_bytes()), "深圳天气 ☁️");
+    }
+
+    #[cfg(windows)]
+    #[test]
+    fn ansi_text_falls_back_without_replacement_chars() {
+        // "找不到路径" as GBK bytes, the encoding PowerShell writes when redirected.
+        let gbk = [0xd5, 0xd2, 0xb2, 0xbb, 0xb5, 0xbd, 0xc2, 0xb7, 0xbe, 0xb6];
+        let text = decode_text(&gbk);
+        assert!(!text.contains('\u{fffd}'));
+        if ansi_code_page() == 936 {
+            assert_eq!(text, "找不到路径");
+        }
+    }
+
+    #[cfg(all(windows, test))]
+    #[link(name = "kernel32")]
+    extern "system" {
+        fn GetACP() -> u32;
+    }
+
+    #[cfg(all(windows, test))]
+    fn ansi_code_page() -> u32 {
+        unsafe { GetACP() }
     }
 }

@@ -2,6 +2,8 @@
 
 mod agent;
 mod config;
+mod console;
+mod interrupt;
 mod llm;
 mod memory;
 mod prompt;
@@ -15,7 +17,10 @@ use config::Config;
 use std::path::{Path, PathBuf};
 
 fn main() {
-    if let Err(e) = run() {
+    console::init();
+    let result = run();
+    console::restore();
+    if let Err(e) = result {
         eprintln!("Error: {:#}", e);
         std::process::exit(1);
     }
@@ -387,14 +392,20 @@ fn print_help() {
     );
     println!("\nusage:");
     for (cmd, desc) in [
-        ("vola-agent", "enter interactive mode (default command chat)"),
+        (
+            "vola-agent",
+            "enter interactive mode (default command chat)",
+        ),
         ("vola-agent ask \"<question>\"", "one-shot question"),
         ("vola-agent skills", "list skills"),
         (
             "vola-agent memory add <content> [--pin] | search <keyword> | delete <id> | list",
             "",
         ),
-        ("vola-agent models", "list models from the selected provider"),
+        (
+            "vola-agent models",
+            "list models from the selected provider",
+        ),
         ("vola-agent sessions", "list past sessions"),
         ("vola-agent tools", "list tools"),
         (

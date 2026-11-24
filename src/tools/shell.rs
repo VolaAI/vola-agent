@@ -15,6 +15,7 @@ pub struct CmdOutcome {
     pub stdout: String,
     pub stderr: String,
     pub timed_out: bool,
+    pub cancelled: bool,
     pub elapsed: f64,
     pub shell: String,
 }
@@ -26,8 +27,14 @@ pub fn danger_reason(cmd: &str) -> Option<&'static str> {
         ("rm -rf /", "recursively delete the root directory"),
         ("rm -rf /c", "recursively delete an entire drive"),
         ("rm -rf c:", "recursively delete an entire drive"),
-        ("del /f /s /q c:\\", "format-style deletion of the system drive"),
-        ("rd /s /q c:\\", "recursively delete system drive directories"),
+        (
+            "del /f /s /q c:\\",
+            "format-style deletion of the system drive",
+        ),
+        (
+            "rd /s /q c:\\",
+            "recursively delete system drive directories",
+        ),
         ("format c:", "format the system drive"),
         ("format-volume", "format a volume"),
         ("clear-disk", "wipe a physical disk"),
@@ -70,13 +77,21 @@ fn build_command(cfg: &Config, cmd: &str, kind: ShellKind) -> (Command, String) 
         }
         ShellKind::Cmd => {
             let mut c = Command::new("cmd.exe");
-            c.arg("/D").arg("/S").arg("/C")
+            c.arg("/D")
+                .arg("/S")
+                .arg("/C")
                 .arg(format!("chcp 65001>nul & {}", cmd));
             c
         }
         ShellKind::PowerShell => {
             let mut c = Command::new("powershell.exe");
-            c.args(["-NoLogo", "-NoProfile", "-NonInteractive", "-Command", cmd]);
+            c.args(["-NoLogo", "-NoProfile", "-NonInteractive", "-Command"]);
+            // Force UTF-8 for PowerShell's own messages and for native output (curl etc.);
+            // otherwise redirected output arrives as GBK and turns into mojibake.
+            c.arg(format!(
+                "[Console]::OutputEncoding=[Text.Encoding]::UTF8; {}",
+                cmd
+            ));
             c
         }
     };
@@ -94,7 +109,9 @@ fn build_command(cfg: &Config, cmd: &str, kind: ShellKind) -> (Command, String) 
     (c, label)
 }
 
-fn reader<R: Read + Send + 'static>(mut r: R) -> (Arc<Mutex<Vec<u8>>>, std::thread::JoinHandle<()>) {
+fn reader<R: Read + Send + 'static>(
+    mut r: R,
+) -> (Arc<Mutex<Vec<u8>>>, std::thread::JoinHandle<()>) {
     let buf = Arc::new(Mutex::new(Vec::<u8>::new()));
     let sink = buf.clone();
     let handle = std::thread::spawn(move || {
@@ -161,7 +178,7 @@ fn finish_readers(
 
 fn snapshot(buf: &Arc<Mutex<Vec<u8>>>) -> String {
     let bytes = buf.lock().map(|b| b.clone()).unwrap_or_default();
-    String::from_utf8_lossy(&bytes).to_string()
+    crate::util::decode_text(&bytes)
 }
 
 /// Run one command and return structured result text (never panics; errors become readable text).
@@ -200,8 +217,18 @@ pub fn run(
 
     let deadline = start + timeout;
     let mut timed_out = false;
+    let mut cancelled = false;
     let mut code = None;
     loop {
+        if crate::interrupt::cancelled() {
+            cancelled = true;
+            kill_tree(pid);
+            let _ = child.kill();
+            if let Ok(status) = child.wait() {
+                code = status.code();
+            }
+            break;
+        }
         match child.try_wait() {
             Ok(Some(status)) => {
                 code = status.code();
@@ -236,6 +263,7 @@ pub fn run(
         stdout,
         stderr,
         timed_out,
+        cancelled,
         elapsed,
         shell: label,
     })
@@ -246,17 +274,24 @@ impl CmdOutcome {
         let mut s = String::new();
         s.push_str(&format!("[command] {}\n", cmd.trim()));
         s.push_str(&format!("[shell] {}\n", self.shell));
-        if self.timed_out {
+        if self.cancelled {
+            s.push_str("[exit code] interrupted by the user (Ctrl+C)\n");
+        } else if self.timed_out {
             s.push_str("[exit code] killed after the timeout\n");
         } else {
             match self.code {
                 Some(0) => s.push_str("[exit code] 0\n"),
-                Some(c) => s.push_str(&format!("[exit code] {} (the command failed, see stderr)\n", c)),
+                Some(c) => s.push_str(&format!(
+                    "[exit code] {} (the command failed, see stderr)\n",
+                    c
+                )),
                 None => s.push_str("[exit code] unknown (process was killed)\n"),
             }
         }
         s.push_str(&format!("[elapsed] {:.2}s\n", self.elapsed));
-        if self.timed_out {
+        if self.cancelled {
+            s.push_str("[cancelled] the user pressed Ctrl+C; the whole process tree was killed.\n");
+        } else if self.timed_out {
             s.push_str("[timeout] still running past the limit; the whole process tree was killed. Run it in the background, split the command, or raise timeout_secs.\n");
         }
         if !self.stdout.trim().is_empty() {
@@ -269,16 +304,23 @@ impl CmdOutcome {
             s.push_str(self.stderr.trim_end());
             s.push('\n');
         }
-        if self.stdout.trim().is_empty() && self.stderr.trim().is_empty() {
+        if !self.cancelled && self.stdout.trim().is_empty() && self.stderr.trim().is_empty() {
             s.push_str("\n[output] (no output)\n");
             let c = cmd.to_ascii_lowercase();
-            if c.contains("curl") || c.contains("wget") || c.contains("http://") || c.contains("https://") {
+            if c.contains("curl")
+                || c.contains("wget")
+                || c.contains("http://")
+                || c.contains("https://")
+            {
                 s.push_str("[hint] the network command printed nothing: keep the URL fully quoted (an unquoted '&' splits the command), add -f/--fail-with-body to surface HTTP errors, and prefer keyless endpoints; never pass a placeholder API key.\n");
             } else {
                 s.push_str("[hint] the command printed nothing: it may not exist, may have failed silently (stderr redirected), or may have written to a file.\n");
             }
         }
-        s.push_str(&format!("[output bytes] {}\n", char_len(&self.stdout) + char_len(&self.stderr)));
+        s.push_str(&format!(
+            "[output bytes] {}\n",
+            char_len(&self.stdout) + char_len(&self.stderr)
+        ));
         s
     }
 }

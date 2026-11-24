@@ -9,7 +9,7 @@ use std::path::PathBuf;
 use std::time::Duration;
 
 use crate::config::Config;
-use crate::memory::{MemoryStore, render_message};
+use crate::memory::{render_message, MemoryStore};
 use crate::skills::Skills;
 use crate::util::truncate_middle;
 
@@ -26,7 +26,7 @@ pub fn schemas() -> Vec<Value> {
             "type": "function",
             "function": {
                 "name": "run_cmd",
-                "description": "Run a shell command in the working directory and return stdout/stderr/exit code. bash by default (git-bash). The command must not be interactive (no prompts for input), and do not truncate output with tail/head. Default timeout is 60 seconds; on timeout the whole process tree is killed.",
+                "description": "Run a shell command in the working directory and return stdout/stderr/exit code. Uses the configured shell shown as `shell=` in the runtime environment (git-bash, cmd.exe or powershell); do not assume bash. The command must not be interactive (no prompts for input), and do not truncate output with tail/head. Default timeout is 60 seconds; on timeout the whole process tree is killed.",
                 "parameters": {
                     "type": "object",
                     "properties": {
@@ -290,7 +290,11 @@ fn dispatch(env: &mut ToolEnv, name: &str, args: &Value) -> Result<String> {
             fsops::read_file(env.cfg, &path, offset, limit)
         }
         "write_file" => {
-            let path = require(args, &["path", "file", "filename", "filepath"], "write_file")?;
+            let path = require(
+                args,
+                &["path", "file", "filename", "filepath"],
+                "write_file",
+            )?;
             let content = arg_str(args, &["content", "text", "body", "data"])
                 .or_else(|| {
                     args.get("content")
@@ -306,7 +310,11 @@ fn dispatch(env: &mut ToolEnv, name: &str, args: &Value) -> Result<String> {
         }
         "skill_list" => {
             let rows = env.store.skills()?;
-            let mut s = format!("[skill library] {} skills (directory {})\n", rows.len(), env.skills.dir().display());
+            let mut s = format!(
+                "[skill library] {} skills (directory {})\n",
+                rows.len(),
+                env.skills.dir().display()
+            );
             if rows.is_empty() {
                 s.push_str("(no skills yet. Use skill_save to capture one.)\n");
             }
@@ -333,11 +341,16 @@ fn dispatch(env: &mut ToolEnv, name: &str, args: &Value) -> Result<String> {
                     ))
                 }
                 None => {
-                    let available: Vec<String> = env.skills.discover().into_iter().map(|m| m.name).collect();
+                    let available: Vec<String> =
+                        env.skills.discover().into_iter().map(|m| m.name).collect();
                     Ok(format!(
                         "[no skill `{}`] available: {}",
                         name,
-                        if available.is_empty() { "none".to_string() } else { available.join(", ") }
+                        if available.is_empty() {
+                            "none".to_string()
+                        } else {
+                            available.join(", ")
+                        }
                     ))
                 }
             }
@@ -348,7 +361,8 @@ fn dispatch(env: &mut ToolEnv, name: &str, args: &Value) -> Result<String> {
             let tags = arg_str(args, &["tags"]).unwrap_or_default();
             let body = require(args, &["body", "content", "steps", "text"], "skill_save")?;
             let (meta, existed) = env.skills.save(&name, &description, &tags, &body)?;
-            env.store.upsert_skill(&meta.name, &meta.description, &meta.path.to_string_lossy())?;
+            env.store
+                .upsert_skill(&meta.name, &meta.description, &meta.path.to_string_lossy())?;
             Ok(format!(
                 "[skill {}] {} -> {}\n[notes] {}\n[body {} chars]",
                 if existed { "updated" } else { "created" },
@@ -363,7 +377,9 @@ fn dispatch(env: &mut ToolEnv, name: &str, args: &Value) -> Result<String> {
             let tags = arg_str(args, &["tags"]).unwrap_or_default();
             let pinned = arg_bool(args, &["pinned", "pin", "important"]).unwrap_or(false);
             let key = arg_str(args, &["key", "name"]);
-            let id = env.store.add_note(&content, &tags, pinned, key.as_deref())?;
+            let id = env
+                .store
+                .add_note(&content, &tags, pinned, key.as_deref())?;
             Ok(format!(
                 "[memory written] id={} pinned={} tags=[{}]\n{}",
                 id, pinned, tags, content
@@ -394,7 +410,8 @@ fn dispatch(env: &mut ToolEnv, name: &str, args: &Value) -> Result<String> {
             Ok(s)
         }
         "memory_delete" => {
-            let id = arg_usize(args, &["id", "note_id"]).ok_or_else(|| anyhow::anyhow!("missing argument id"))? as i64;
+            let id = arg_usize(args, &["id", "note_id"])
+                .ok_or_else(|| anyhow::anyhow!("missing argument id"))? as i64;
             let ok = env.store.delete_note(id)?;
             Ok(if ok {
                 format!("[memory deleted] id={}", id)

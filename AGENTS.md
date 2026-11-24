@@ -21,7 +21,9 @@ config.json               paths, database and local LLM settings (source of trut
 README.md                 user-facing documentation
 COMMIT_RULES.md           Conventional Commits 1.0.0; required for every commit
 src/main.rs               argv parsing, subcommands, memory CLI, project init
-src/repl.rs               interactive REPL and slash commands
+src/repl.rs               interactive REPL and slash commands, Ctrl+C routing
+src/console.rs            Windows console UTF-8 setup (set/restore the code page)
+src/interrupt.rs          Ctrl+C state: quit at the prompt, cancel the current turn while working
 src/agent.rs              agent loop: context budget, compaction, tool dispatch, loop guards
 src/config.rs             config.json + env + CLI precedence, path resolution, shell detection
 src/llm.rs                LLM client: native Ollama (/api/chat), OpenAI-compatible (/v1), DeepSeek
@@ -122,6 +124,17 @@ When adding a config key, update all of: `FileConfig` and `Config` in `src/confi
   and the same tool call repeated twice is rejected as a loop.
 - `run_cmd` blocks dangerous commands unless `VOLA_AGENT_ALLOW_DANGEROUS=1`; output is truncated
   head/tail and command timeout defaults to 60s.
+- Ctrl+C at the REPL prompt exits; while a turn runs it sets a cancellation flag that the agent
+  checks between rounds and tool calls (model requests are run on a helper thread so the REPL
+  never blocks), and `run_cmd` kills its process tree. Tool calls whose results were already
+  requested get `[cancelled]` replies so a `tool_calls` message never loses its pairing.
+- `Agent::respond_with` reports `TurnProgress` (round, context chars, prompt/output tokens)
+  for the REPL status line; `respond` is the no-progress wrapper. `completion_tokens` comes from
+  the provider usage (OpenAI `usage.completion_tokens`, Ollama `eval_count`), summed per turn.
+- The spinner/ANSI status line is used only when `stdout.is_terminal()`; piped input and `ask`
+  stay plain text. The first round labels token counts `est~` until the provider reports usage.
+- Child-process and file text is decoded as UTF-8 first, then the Windows ANSI code page (GBK), so
+  PowerShell messages and Chinese output never reach the model as `�`.
 - Tool-call and file relative paths resolve against `cfg.home`.
 - The binary must remain runnable without a pre-existing DB: `MemoryStore::open` migrates the
   schema on first use.

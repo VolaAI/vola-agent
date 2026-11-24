@@ -27,7 +27,7 @@ pub fn resolve(cfg: &Config, raw: &str) -> PathBuf {
 pub fn read_file(cfg: &Config, path: &str, offset: usize, limit: usize) -> Result<String> {
     let p = resolve(cfg, path);
     let bytes = fs::read(&p).with_context(|| format!("failed to read: {}", p.display()))?;
-    let text = String::from_utf8_lossy(&bytes).to_string();
+    let text = crate::util::decode_text(&bytes);
     let total_lines = text.lines().count();
     let total_chars = char_len(&text);
     if offset == 0 && total_chars <= cfg.output_limit {
@@ -58,7 +58,11 @@ pub fn read_file(cfg: &Config, path: &str, offset: usize, limit: usize) -> Resul
         if cut { " (truncated)" } else { "" },
         chunk,
         if total_lines > end {
-            format!("\n[hint] {} lines remain; continue with offset={}", total_lines - end, end + 1)
+            format!(
+                "\n[hint] {} lines remain; continue with offset={}",
+                total_lines - end,
+                end + 1
+            )
         } else {
             String::new()
         }
@@ -68,7 +72,8 @@ pub fn read_file(cfg: &Config, path: &str, offset: usize, limit: usize) -> Resul
 pub fn write(cfg: &Config, path: &str, content: &str) -> Result<String> {
     let p = resolve(cfg, path);
     if let Some(dir) = p.parent() {
-        fs::create_dir_all(dir).with_context(|| format!("failed to create the directory: {}", dir.display()))?;
+        fs::create_dir_all(dir)
+            .with_context(|| format!("failed to create the directory: {}", dir.display()))?;
     }
     fs::write(&p, content).with_context(|| format!("write failed: {}", p.display()))?;
     Ok(format!(
@@ -92,10 +97,24 @@ pub fn list_dir(cfg: &Config, path: &str, depth: usize) -> Result<String> {
         out.push_str("(empty directory)\n");
     }
     let (text, cut) = truncate_middle(&out, cfg.output_limit);
-    Ok(format!("{}{}", text, if cut { "\n[truncated: directory too large, narrow the scope]" } else { "" }))
+    Ok(format!(
+        "{}{}",
+        text,
+        if cut {
+            "\n[truncated: directory too large, narrow the scope]"
+        } else {
+            ""
+        }
+    ))
 }
 
-fn walk(dir: &Path, level: usize, max_depth: usize, out: &mut String, count: &mut usize) -> Result<()> {
+fn walk(
+    dir: &Path,
+    level: usize,
+    max_depth: usize,
+    out: &mut String,
+    count: &mut usize,
+) -> Result<()> {
     let Ok(entries) = fs::read_dir(dir) else {
         out.push_str(&format!("{}(unreadable)\n", indent(level)));
         return Ok(());
@@ -104,7 +123,10 @@ fn walk(dir: &Path, level: usize, max_depth: usize, out: &mut String, count: &mu
     items.sort_by_key(|e| e.file_name());
     for entry in items {
         if *count >= 400 {
-            out.push_str(&format!("{}... (listing too long, stopped)\n", indent(level)));
+            out.push_str(&format!(
+                "{}... (listing too long, stopped)\n",
+                indent(level)
+            ));
             return Ok(());
         }
         *count += 1;

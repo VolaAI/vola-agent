@@ -83,6 +83,7 @@ pub struct ChatResponse {
     content: String,
     calls: Vec<ToolCall>,
     prompt_tokens: Option<u64>,
+    completion_tokens: Option<u64>,
     tokens_per_sec: Option<f64>,
 }
 
@@ -97,6 +98,10 @@ impl ChatResponse {
 
     pub fn prompt_tokens(&self) -> Option<u64> {
         self.prompt_tokens
+    }
+
+    pub fn completion_tokens(&self) -> Option<u64> {
+        self.completion_tokens
     }
 
     pub fn tokens_per_sec(&self) -> Option<f64> {
@@ -234,10 +239,6 @@ impl LlmClient {
         }
     }
 
-    pub fn set_model(&mut self, model: &str) {
-        self.model = model.to_string();
-    }
-
     /// One completion; tools are disabled when the list is empty.
     pub fn chat(&self, messages: &[Message], tools: Option<&[Value]>) -> Result<ChatResponse> {
         match self.kind {
@@ -295,6 +296,7 @@ impl LlmClient {
                         content: message.content.unwrap_or_default(),
                         calls: message.tool_calls.unwrap_or_default(),
                         prompt_tokens: parsed.usage.prompt_tokens,
+                        completion_tokens: parsed.usage.completion_tokens,
                         tokens_per_sec: speed,
                     });
                 }
@@ -362,6 +364,7 @@ impl LlmClient {
                         content: parsed.message.content.unwrap_or_default(),
                         calls: parsed.message.tool_calls.unwrap_or_default(),
                         prompt_tokens: parsed.prompt_eval_count,
+                        completion_tokens: parsed.eval_count,
                         tokens_per_sec: speed,
                     });
                 }
