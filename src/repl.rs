@@ -166,7 +166,7 @@ impl Spinner {
             let running = Arc::clone(&running);
             Some(std::thread::spawn(move || {
                 // ASCII frames render in every Windows console font.
-                const FRAMES: [&str; 4] = ["|", "/", "-", "\\"];
+                const FRAMES: [&str; 10] = ["⠋", "⠙", "⠹", "⠸", "⠼", "⠴", "⠦", "⠧", "⠇", "⠏"];
                 let started = Instant::now();
                 let mut frame = 0usize;
                 while running.load(Ordering::SeqCst) {
