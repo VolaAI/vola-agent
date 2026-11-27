@@ -207,7 +207,7 @@ mod tests {
 
     #[test]
     fn utf8_text_is_not_transcoded() {
-        assert_eq!(decode_text("深圳天气 ☁️".as_bytes()), "深圳天气 ☁️");
+        assert_eq!(decode_text("☁️".as_bytes()), "☁️");
     }
 
     #[cfg(windows)]

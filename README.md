@@ -2,6 +2,12 @@
 
 An Agent written in Rust: it speaks the OpenAI-compatible `/v1/chat/completions` tools protocol (served locally by Ollama), actually runs commands on this machine, reads and writes files, maintains its own skills, and stores sessions and long-term memory in SQLite.
 
+The workspace has three parts:
+
+- `vola-core` — the engine (LLM clients, SQLite memory, skills, tools) plus a WebSocket API.
+- `vola-agent` — the command-line client: REPL, one-shot `ask`, `serve` and maintenance commands.
+- `vola-gui` — a native desktop GUI: TSX rendered by [nsh](https://nsh.dev/), talking to `vola-core` over WebSocket.
+
 ## Quick start
 
 ```bash
@@ -14,9 +20,52 @@ Or run the built binary directly:
 ./target/release/vola-agent            # start the REPL
 ./target/release/vola-agent ask "list the files in the current directory"
 ./target/release/vola-agent tools      # list all tools
+./target/release/vola-agent serve      # WebSocket API for the GUI (ws://127.0.0.1:8765)
+```
+
+Then, in another terminal, run the GUI (requires `nsh` 0.7+):
+
+```bash
+nsh run vola-gui
 ```
 
 Prerequisite: Ollama runs locally at `http://127.0.0.1:11434` with its OpenAI-compatible `/v1` endpoints (`ollama serve`; on this machine `G:\Ollama\start-ollama.bat` works). The default model is `heretic-9b-64k:latest`, overridable with `--model` or `VOLA_AGENT_MODEL`. Paths and LLM settings live in the project-root `config.json` (see "Configuration" below). `chat` and `ask` verify that the server is reachable and the model is installed before starting; a failure is reported clearly instead of leaving an empty session behind.
+
+## Native GUI (vola-gui)
+
+`vola-gui` is a separate nsh project: `App.tsx` and `src/` are the TSX interface, and
+`ext/vola-gui-native` is a Rust crate the GUI calls to launch the core (`CoreServer.start`).
+The GUI is not part of the Cargo workspace; build and check it with nsh:
+
+```bash
+nsh run vola-gui        # dev host with hot reload (Win32 on Windows)
+nsh check vola-gui      # type-check the TSX and `cargo check` the Rust extension
+nsh test vola-gui       # headless UI test
+nsh package vola-gui --target windows
+```
+
+Start the core first, either from a terminal (`vola-agent serve`) or with the GUI's
+**Start core** button (it runs the built `vola-agent` from `target/release` or
+`target/debug`, or `VOLA_AGENT_BIN`). **Connect** opens `ws://127.0.0.1:8765`; the inspector's
+**Settings → Stop core** stops a server the GUI started.
+
+The GUI supports chat with live tool cards and token/context progress, cancel/stop,
+sessions (new, resume, history), model switching and listing, model-provider errors,
+compaction, the skill library, long-term memory, and the tool list.
+
+### WebSocket protocol
+
+One JSON object per text frame. Client requests carry `type` and fields; server replies
+carry `type` and, when they have one, a `data` payload:
+
+| Direction  | Messages                                                                                                                                                                                                                                               |
+| ---------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ |
+| GUI → core | `status`, `sessions`, `messages`, `new_session`, `resume`, `chat`, `cancel`, `set_model`, `models`, `skills`, `skill`, `notes`, `add_note`, `delete_note`, `compress`, `tools`, `stats`                                                                |
+| core → GUI | `ready`, `status`, `sessions`, `messages`, `session`, `model`, `models`, `skills`, `skill`, `notes`, `note`, `deleted`, `compressed`, `tools`, `stats`, `turn_started`, `progress`, `tool_call`, `tool_result`, `notice`, `turn_done`, `error`, `pong` |
+
+A turn streams `turn_started` → `progress` / `tool_call` / `tool_result` / `notice` →
+`turn_done`. `cancel` sets the same cancellation flag the REPL uses, so the agent stops at
+its next safe point and still pairs every `tool_calls` message with a result.
 
 ## Capabilities
 
@@ -37,6 +86,7 @@ Prerequisite: Ollama runs locally at `http://127.0.0.1:11434` with its OpenAI-co
 ```
 vola-agent [chat]                       Interactive REPL (default)
 vola-agent ask "<question>"             One-shot question; process to stderr, answer to stdout
+vola-agent serve [--addr host:port]     WebSocket API for vola-gui (default 127.0.0.1:8765)
 vola-agent skills | memory list|search|add | models | sessions | tools
 vola-agent init                         Create config.json, asset/script/skill dirs and prompt skeletons
 ```
@@ -128,16 +178,37 @@ Environment variables (effective only when `config.json` does not set the key): 
 ## Layout
 
 ```
-src/main.rs     argv parsing and subcommands
-src/repl.rs     interactive loop, slash commands, Ctrl+C routing
-src/agent.rs    main loop: compaction, tool dispatch, error counting, interruptible requests
-src/console.rs  Windows console UTF-8 setup (set/restore the code page)
-src/interrupt.rs Ctrl+C state: prompt quits, work cancels
-src/llm.rs      OpenAI-compatible HTTP (/v1/chat/completions, /v1/models)
-src/memory.rs   SQLite: messages, notes, summaries, skill index
-src/skills.rs   skill file discovery and frontmatter parsing
-src/prompt.rs   system prompt assembly
-src/tools/      shell.rs / fsops.rs / mod.rs (schemas and dispatch)
+Cargo.toml                Cargo workspace (`vola-agent` + `vola-core`)
+config.json               paths and local LLM settings
+src/                      the CLI binary
+  main.rs                 argv parsing, subcommands, memory CLI, init
+  repl.rs                 interactive loop, slash commands, Ctrl+C routing
+  console.rs              Windows console UTF-8 setup
+vola-core/src/            the engine (library crate)
+  lib.rs                  public modules
+  agent.rs                agent loop: budget, compaction, tools, guards, turn events
+  config.rs               config.json + env + CLI precedence
+  llm.rs                  native Ollama, OpenAI-compatible, DeepSeek clients
+  memory.rs               SQLite sessions, messages, notes, summaries, skills
+  prompt.rs               system prompt assembly and compaction prompt
+  skills.rs               skill discovery and frontmatter parsing
+  tools/                  shell.rs / fsops.rs / mod.rs
+  protocol.rs             GUI wire types
+  server.rs               WebSocket server: one Agent per connection
+  ws.rs                   minimal blocking RFC 6455 server
+  interrupt.rs            cancellation shared by the REPL and the server
+  util.rs                 time, truncation, decoding helpers
+vola-gui/                 native GUI (nsh project, not in the Cargo workspace)
+  App.tsx                 mount point
+  src/protocol.ts         wire types (mirrors protocol.rs)
+  src/store.ts            signals, socket and actions
+  src/ui.tsx              screens and components
+  ext/vola-gui-native/    Rust extension: starts `vola-agent serve`
+agent/SYSTEM.md           system prompt
+agent/MEMORY.md           compaction prompt (formerly PROMPT_INIT.md)
+agent/skills/SKILL.md     skill library manager page
+agent/skills/references/  one Markdown file per skill
+agent/data/memory.db      sessions, notes, summaries, skill index
 ```
 
 Paths are configured by `config.json`; by default all runtime assets live under `agent/`:

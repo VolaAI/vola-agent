@@ -1,6 +1,7 @@
 //! Agent main loop: context budget and compression, tool dispatch, error counting, round cap, repeat-call detection.
 
 use anyhow::{anyhow, Result};
+use serde::Serialize;
 use serde_json::Value;
 use std::collections::HashMap;
 use std::sync::Arc;
@@ -15,6 +16,7 @@ use crate::skills::Skills;
 use crate::tools::{self, ToolEnv};
 use crate::util::{char_len, snippet};
 
+#[derive(Debug, Clone, Serialize)]
 pub struct TurnReport {
     pub text: String,
     pub rounds: usize,
@@ -30,15 +32,34 @@ pub struct TurnReport {
     pub cancelled: bool,
 }
 
-/// Live numbers reported while a turn runs, for the REPL status line.
-#[derive(Clone, Debug, Default)]
+/// Live numbers reported while a turn runs, for the REPL status line and the GUI.
+#[derive(Clone, Debug, Default, Serialize)]
 pub struct TurnProgress {
+    /// The model round this snapshot belongs to (1-based).
+    pub round: usize,
     pub ctx_chars: usize,
     pub budget_chars: usize,
     pub num_ctx: u32,
     pub prompt_tokens: Option<u64>,
     pub completion_tokens: Option<u64>,
     pub total_completion_tokens: u64,
+}
+
+/// What happens during a turn, besides the final report.
+#[derive(Debug, Clone)]
+pub enum TurnEvent {
+    /// A human-readable notice (a guard fired, history was compacted).
+    Notice(String),
+    /// The model asked for a tool call.
+    ToolCall { name: String, args: String },
+    /// A tool call finished; `error` marks a failed or rejected call.
+    ToolResult {
+        name: String,
+        result: String,
+        error: bool,
+    },
+    /// Live round, context and token numbers.
+    Progress(TurnProgress),
 }
 
 pub struct Agent {
@@ -97,6 +118,27 @@ impl Agent {
     where
         F: FnMut(&str),
     {
+        self.respond_events(input, &mut |event| match event {
+            TurnEvent::Notice(text) => log(&text),
+            TurnEvent::ToolCall { name, args } => log(&format!("→ {}({})", name, args)),
+            TurnEvent::ToolResult {
+                name: _,
+                result,
+                error,
+            } => {
+                let shown = snippet(&result.replace('\n', " "), if error { 200 } else { 400 });
+                log(&format!("{} {}", if error { "✗" } else { "✓" }, shown));
+            }
+            TurnEvent::Progress(p) => progress(&p),
+        })
+    }
+
+    /// Handle one turn, emitting structured events for a UI (the REPL maps them back to text).
+    pub fn respond_events(
+        &mut self,
+        input: &str,
+        emit: &mut dyn FnMut(TurnEvent),
+    ) -> Result<TurnReport> {
         let started = Instant::now();
         self.store
             .append_message(self.session_id, "user", input, None, None, None)?;
@@ -155,14 +197,16 @@ impl Agent {
             compressed_any |= compressed;
             let ctx_chars = messages.iter().map(|m| m.weight()).sum::<usize>();
             last_ctx_chars = ctx_chars;
-            progress(&TurnProgress {
+            emit_progress(
+                emit,
+                rounds,
                 ctx_chars,
-                budget_chars: self.cfg.budget_chars,
-                num_ctx: self.cfg.num_ctx,
-                prompt_tokens: last_prompt_tokens,
-                completion_tokens: last_completion_tokens,
+                self.cfg.budget_chars,
+                self.cfg.num_ctx,
+                last_prompt_tokens,
+                last_completion_tokens,
                 total_completion_tokens,
-            });
+            );
 
             let resp = match self.chat_interruptible(&messages, Some(&schemas)) {
                 Ok(Some(r)) => r,
@@ -196,14 +240,16 @@ impl Agent {
             if let Some(c) = resp.completion_tokens() {
                 total_completion_tokens += c;
             }
-            progress(&TurnProgress {
+            emit_progress(
+                emit,
+                rounds,
                 ctx_chars,
-                budget_chars: self.cfg.budget_chars,
-                num_ctx: self.cfg.num_ctx,
-                prompt_tokens: last_prompt_tokens,
-                completion_tokens: last_completion_tokens,
+                self.cfg.budget_chars,
+                self.cfg.num_ctx,
+                last_prompt_tokens,
+                last_completion_tokens,
                 total_completion_tokens,
-            });
+            );
 
             let content = resp.content();
             let mut calls = resp.calls();
@@ -292,14 +338,16 @@ impl Agent {
                     if let Some(c) = follow.completion_tokens() {
                         total_completion_tokens += c;
                     }
-                    progress(&TurnProgress {
+                    emit_progress(
+                        emit,
+                        rounds,
                         ctx_chars,
-                        budget_chars: self.cfg.budget_chars,
-                        num_ctx: self.cfg.num_ctx,
-                        prompt_tokens: last_prompt_tokens,
-                        completion_tokens: last_completion_tokens,
+                        self.cfg.budget_chars,
+                        self.cfg.num_ctx,
+                        last_prompt_tokens,
+                        last_completion_tokens,
                         total_completion_tokens,
-                    });
+                    );
                     let answer = follow.content().trim().to_string();
                     if answer.is_empty() {
                         format!(
@@ -342,10 +390,10 @@ impl Agent {
             }
 
             if rounds > self.cfg.max_rounds {
-                log(&format!(
+                emit(TurnEvent::Notice(format!(
                     "⚠ tool round limit {} reached, asking the model to answer directly",
                     self.cfg.max_rounds
-                ));
+                )));
                 let mut last = messages.clone();
                 last.push(Message::user(
                     "The tool-call round limit has been reached. Stop calling tools and answer directly, in the user's language, from the information above; state what remains unverified.",
@@ -382,14 +430,16 @@ impl Agent {
                 if let Some(c) = resp.completion_tokens() {
                     total_completion_tokens += c;
                 }
-                progress(&TurnProgress {
+                emit_progress(
+                    emit,
+                    rounds,
                     ctx_chars,
-                    budget_chars: self.cfg.budget_chars,
-                    num_ctx: self.cfg.num_ctx,
-                    prompt_tokens: last_prompt_tokens,
-                    completion_tokens: last_completion_tokens,
+                    self.cfg.budget_chars,
+                    self.cfg.num_ctx,
+                    last_prompt_tokens,
+                    last_completion_tokens,
                     total_completion_tokens,
-                });
+                );
                 let text = if resp.content().trim().is_empty() {
                     "(round limit reached and the model gave no conclusion; narrow the task and retry)".to_string()
                 } else {
@@ -429,7 +479,10 @@ impl Agent {
                 let name = call.function.name.clone();
                 let args = normalize_args(&call.function.arguments);
                 let preview = snippet(&args.to_string(), 160);
-                log(&format!("→ {}({})", name, preview));
+                emit(TurnEvent::ToolCall {
+                    name: name.clone(),
+                    args: preview.clone(),
+                });
 
                 let key = format!("{}|{}", name, args);
                 let times = *seen.get(&key).unwrap_or(&0);
@@ -438,7 +491,11 @@ impl Agent {
                         "[Tool error] the same call has repeated {} times and is treated as a loop; change approach or answer directly.",
                         times
                     );
-                    log(&format!("✗ {}", warn));
+                    emit(TurnEvent::ToolResult {
+                        name: name.clone(),
+                        result: warn.clone(),
+                        error: true,
+                    });
                     self.store.append_message(
                         self.session_id,
                         "tool",
@@ -475,7 +532,11 @@ impl Agent {
                 if is_err {
                     consecutive_errors += 1;
                     last_err = snippet(&result, 160);
-                    log(&format!("✗ {}", snippet(&result, 200)));
+                    emit(TurnEvent::ToolResult {
+                        name: name.clone(),
+                        result: result.clone(),
+                        error: true,
+                    });
                 } else {
                     consecutive_errors = 0;
                     done.push(format!(
@@ -483,7 +544,11 @@ impl Agent {
                         name,
                         snippet(&result.replace('\n', " "), 400)
                     ));
-                    log(&format!("✓ {}", snippet(&result.replace('\n', " "), 400)));
+                    emit(TurnEvent::ToolResult {
+                        name: name.clone(),
+                        result: result.clone(),
+                        error: false,
+                    });
                 }
                 self.store.append_message(
                     self.session_id,
@@ -745,6 +810,27 @@ impl Agent {
             }
         }
     }
+}
+
+fn emit_progress(
+    emit: &mut dyn FnMut(TurnEvent),
+    round: usize,
+    ctx_chars: usize,
+    budget_chars: usize,
+    num_ctx: u32,
+    prompt_tokens: Option<u64>,
+    completion_tokens: Option<u64>,
+    total_completion_tokens: u64,
+) {
+    emit(TurnEvent::Progress(TurnProgress {
+        round,
+        ctx_chars,
+        budget_chars,
+        num_ctx,
+        prompt_tokens,
+        completion_tokens,
+        total_completion_tokens,
+    }));
 }
 
 fn cancelled_turn(

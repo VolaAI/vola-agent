@@ -69,7 +69,11 @@ pub fn build(
     let mut s = String::new();
     s.push_str(agent_md.trim());
     s.push_str("\n\n---\n\n## Runtime environment\n");
-    s.push_str(&format!("- Current time: {} (UTC{})\n", fmt_time(now_secs()), offset_str(cfg)));
+    s.push_str(&format!(
+        "- Current time: {} (UTC{})\n",
+        fmt_time(now_secs()),
+        offset_str(cfg)
+    ));
     s.push_str(&format!("- Working directory: {}\n", cfg.home.display()));
     s.push_str(&format!(
         "- Platform: {} / {} / shell={}\n",
@@ -89,7 +93,11 @@ pub fn build(
         "- Context budget: about {} chars (current system prompt {} chars); history is auto-compacted when this is exceeded\n",
         cfg.budget_chars, ctx_chars
     ));
-    s.push_str(&format!("- Session: #{}, database: {}\n", session_id, cfg.db_path.display()));
+    s.push_str(&format!(
+        "- Session: #{}, database: {}\n",
+        session_id,
+        cfg.db_path.display()
+    ));
     s.push_str(&format!(
         "- Skill directory: {} (managed with the skill_* tools)\n",
         cfg.skills_dir.display()
@@ -116,7 +124,11 @@ pub fn build(
         for n in pinned {
             s.push_str(&format!(
                 "- {}{}\n",
-                if n.tags.is_empty() { String::new() } else { format!("[{}] ", n.tags) },
+                if n.tags.is_empty() {
+                    String::new()
+                } else {
+                    format!("[{}] ", n.tags)
+                },
                 n.content.trim()
             ));
         }
@@ -136,7 +148,10 @@ pub fn build(
 
 fn offset_str(cfg: &Config) -> String {
     let _ = cfg;
-    match std::env::var("VOLA_AGENT_UTC_OFFSET").ok().and_then(|v| v.parse::<i32>().ok()) {
+    match std::env::var("VOLA_AGENT_UTC_OFFSET")
+        .ok()
+        .and_then(|v| v.parse::<i32>().ok())
+    {
         Some(v) if v >= 0 => format!("+{}", v),
         Some(v) => v.to_string(),
         None => "+8".to_string(),
@@ -151,15 +166,29 @@ mod tests {
     fn html_comments_are_stripped() {
         assert_eq!(strip_html_comments("a<!-- note -->b"), "ab");
         assert_eq!(strip_html_comments("<!-- unclosed comment"), "");
-        assert_eq!(strip_html_comments("body<!-- multiline
-comment -->tail").trim(), "bodytail");
+        assert_eq!(
+            strip_html_comments(
+                "body<!-- multiline
+comment -->tail"
+            )
+            .trim(),
+            "bodytail"
+        );
     }
 
     #[test]
     fn summarizer_uses_file_text_and_falls_back() {
-        assert_eq!(pick_summarizer(Some("# Conversation compressor\nCondense to 700 words.".into())), "# Conversation compressor\nCondense to 700 words.");
+        assert_eq!(
+            pick_summarizer(Some(
+                "# Conversation compressor\nCondense to 700 words.".into()
+            )),
+            "# Conversation compressor\nCondense to 700 words."
+        );
         // File present but only comments, or unreadable: embedded default takes over.
-        assert_eq!(pick_summarizer(Some("<!-- only a comment -->\n".into())), DEFAULT_SUMMARIZER.to_string());
+        assert_eq!(
+            pick_summarizer(Some("<!-- only a comment -->\n".into())),
+            DEFAULT_SUMMARIZER.to_string()
+        );
         assert_eq!(pick_summarizer(None), DEFAULT_SUMMARIZER.to_string());
     }
 }

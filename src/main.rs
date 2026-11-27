@@ -1,20 +1,11 @@
 //! vola-agent: a command-line client for a local Ollama agent.
 
-mod agent;
-mod config;
 mod console;
-mod interrupt;
-mod llm;
-mod memory;
-mod prompt;
 mod repl;
-mod skills;
-mod tools;
-mod util;
 
 use anyhow::{bail, Context, Result};
-use config::Config;
 use std::path::{Path, PathBuf};
+use vola_core::{agent, config::Config, interrupt, llm, memory, server, skills, tools, util};
 
 fn main() {
     console::init();
@@ -60,6 +51,11 @@ fn run() -> Result<()> {
             "--num-ctx" => {
                 let v = value_of(&raw, &mut i, inline, &key)?;
                 opts.num_ctx = v.parse().ok();
+            }
+            "--addr" => opts.addr = Some(value_of(&raw, &mut i, inline, &key)?),
+            "--port" => {
+                let v = value_of(&raw, &mut i, inline, &key)?;
+                opts.addr = Some(format!("127.0.0.1:{}", v));
             }
             "--verbose" | "-v" => opts.verbose = true,
             "--pin" => positional.push(a.clone()),
@@ -176,6 +172,13 @@ fn run() -> Result<()> {
             );
             Ok(())
         }
+        "serve" => {
+            let addr = opts.addr.unwrap_or_else(|| {
+                std::env::var("VOLA_AGENT_SERVE_ADDR")
+                    .unwrap_or_else(|_| server::DEFAULT_ADDR.to_string())
+            });
+            server::serve(&addr, cfg)
+        }
         "skills" => {
             let skills = skills::Skills::new(cfg.skills_dir.clone());
             let metas = skills.discover();
@@ -259,6 +262,7 @@ struct Options {
     skills: Option<String>,
     session: Option<i64>,
     num_ctx: Option<u32>,
+    addr: Option<String>,
     verbose: bool,
     allow_dangerous: bool,
 }
@@ -406,6 +410,10 @@ fn print_help() {
             "vola-agent models",
             "list models from the selected provider",
         ),
+        (
+            "vola-agent serve [--addr host:port]",
+            "start the WebSocket API for vola-gui (default 127.0.0.1:8765)",
+        ),
         ("vola-agent sessions", "list past sessions"),
         ("vola-agent tools", "list tools"),
         (
@@ -413,7 +421,11 @@ fn print_help() {
             "create config.json, asset dirs and prompt skeletons",
         ),
     ] {
-        println!("{}", format!("  {:<34}{}", cmd, desc).trim_end());
+        if cmd.chars().count() >= 40 {
+            println!("  {}\n      {}", cmd, desc);
+        } else {
+            println!("  {:<40}{}", cmd, desc);
+        }
     }
     println!("\noptions:");
     for (a, b, c) in [
@@ -422,7 +434,8 @@ fn print_help() {
         ("--prompt <SYSTEM.md>", "--summarizer <MEMORY.md>", ""),
         ("--skills <dir>", "--home <project dir>", ""),
         ("-s, --session <id>", "--num-ctx <n>", "-v, --verbose"),
-        ("--allow-dangerous", "--version", "-h, --help"),
+        ("--addr <host:port>", "--port <n>", "--allow-dangerous"),
+        ("--version", "-h, --help", ""),
     ] {
         println!("{}", format!("  {:<22}{:<26}{}", a, b, c).trim_end());
     }
@@ -434,7 +447,7 @@ fn print_help() {
         "OPENAI_API_KEY / DEEPSEEK_API_KEY / VOLA_AGENT_BUDGET / VOLA_AGENT_CMD_TIMEOUT /",
         "VOLA_AGENT_OUTPUT_LIMIT / VOLA_AGENT_MAX_ROUNDS / VOLA_AGENT_MAX_TOOL_ERRORS /",
         "VOLA_AGENT_REQUEST_TIMEOUT / VOLA_AGENT_VERBOSE / VOLA_AGENT_ALLOW_DANGEROUS /",
-        "VOLA_AGENT_SHELL / VOLA_AGENT_BASH",
+        "VOLA_AGENT_SHELL / VOLA_AGENT_BASH / VOLA_AGENT_SERVE_ADDR",
     ] {
         println!("  {}", chunk);
     }

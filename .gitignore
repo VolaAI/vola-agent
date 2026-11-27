@@ -2,3 +2,6 @@
 /agent/data
 /*.log
 /temp
+/vola-gui/target
+/vola-gui/.nsh
+/vola-gui/ext/*/target

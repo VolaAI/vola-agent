@@ -2,12 +2,13 @@
 
 use anyhow::{Context, Result};
 use rusqlite::{params, Connection, OptionalExtension};
+use serde::Serialize;
 use std::path::Path;
 
 use crate::llm::ToolCall;
 use crate::util::{fmt_time, now_secs};
 
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, Serialize)]
 pub struct StoredMessage {
     pub id: i64,
     pub role: String,
@@ -18,7 +19,7 @@ pub struct StoredMessage {
     pub created_at: i64,
 }
 
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, Serialize)]
 pub struct SessionRow {
     pub id: i64,
     pub title: String,
@@ -27,7 +28,7 @@ pub struct SessionRow {
     pub msg_count: i64,
 }
 
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, Serialize)]
 pub struct NoteRow {
     pub id: i64,
     pub key: Option<String>,
@@ -37,7 +38,7 @@ pub struct NoteRow {
     pub updated_at: i64,
 }
 
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, Serialize)]
 pub struct SkillRow {
     pub name: String,
     pub description: String,
@@ -46,7 +47,7 @@ pub struct SkillRow {
     pub updated_at: i64,
 }
 
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, Serialize)]
 pub struct SummaryRow {
     pub upto_message_id: i64,
     pub text: String,
@@ -59,8 +60,9 @@ pub struct MemoryStore {
 impl MemoryStore {
     pub fn open(path: &Path) -> Result<MemoryStore> {
         if let Some(dir) = path.parent() {
-            std::fs::create_dir_all(dir)
-                .with_context(|| format!("failed to create the database directory: {}", dir.display()))?;
+            std::fs::create_dir_all(dir).with_context(|| {
+                format!("failed to create the database directory: {}", dir.display())
+            })?;
         }
         let conn = Connection::open(path)
             .with_context(|| format!("failed to open the database: {}", path.display()))?;
@@ -127,7 +129,9 @@ impl MemoryStore {
     }
 
     fn ensure_column(&self, table: &str, column: &str, ddl: &str) -> Result<()> {
-        let mut stmt = self.conn.prepare(&format!("PRAGMA table_info({})", table))?;
+        let mut stmt = self
+            .conn
+            .prepare(&format!("PRAGMA table_info({})", table))?;
         let names: Vec<String> = stmt
             .query_map([], |r| r.get::<_, String>(1))?
             .collect::<std::result::Result<Vec<_>, _>>()?;
@@ -173,9 +177,11 @@ impl MemoryStore {
 
     pub fn session_title(&self, id: i64) -> Option<String> {
         self.conn
-            .query_row("SELECT title FROM sessions WHERE id = ?1", params![id], |r| {
-                r.get::<_, String>(0)
-            })
+            .query_row(
+                "SELECT title FROM sessions WHERE id = ?1",
+                params![id],
+                |r| r.get::<_, String>(0),
+            )
             .optional()
             .ok()
             .flatten()
@@ -208,7 +214,8 @@ impl MemoryStore {
         tool_calls: Option<&[ToolCall]>,
         tool_call_id: Option<&str>,
     ) -> Result<i64> {
-        let calls_json = tool_calls.map(|c| serde_json::to_string(c).unwrap_or_else(|_| "[]".into()));
+        let calls_json =
+            tool_calls.map(|c| serde_json::to_string(c).unwrap_or_else(|_| "[]".into()));
         let now = now_secs();
         self.conn.execute(
             "INSERT INTO messages(session_id, role, content, tool_name, tool_calls, tool_call_id, created_at)
@@ -358,7 +365,10 @@ impl MemoryStore {
     }
 
     pub fn delete_note(&mut self, id: i64) -> Result<bool> {
-        Ok(self.conn.execute("DELETE FROM notes WHERE id = ?1", params![id])? > 0)
+        Ok(self
+            .conn
+            .execute("DELETE FROM notes WHERE id = ?1", params![id])?
+            > 0)
     }
 
     // ---------- skill index ----------
@@ -428,7 +438,7 @@ impl MemoryStore {
     }
 }
 
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, Serialize)]
 pub struct Stats {
     pub sessions: i64,
     pub messages: i64,
@@ -448,11 +458,7 @@ pub fn render_message(role: &str, content: &str, tool_name: Option<&str>) -> Str
                 format!("Assistant: {}", content)
             }
         }
-        "tool" => format!(
-            "[tool {} result] {}",
-            tool_name.unwrap_or("?"),
-            content
-        ),
+        "tool" => format!("[tool {} result] {}", tool_name.unwrap_or("?"), content),
         other => format!("{}: {}", other, content),
     }
 }
@@ -461,7 +467,11 @@ pub fn session_line(s: &SessionRow) -> String {
     format!(
         "#{:>3}  {}  ({} messages, {}, {})",
         s.id,
-        if s.title.is_empty() { "untitled" } else { &s.title },
+        if s.title.is_empty() {
+            "untitled"
+        } else {
+            &s.title
+        },
         s.msg_count,
         s.model,
         fmt_time(s.updated_at)
@@ -491,7 +501,9 @@ mod tests {
     fn messages_and_summary_roundtrip() {
         let (mut store, path) = temp_db();
         let sid = store.new_session("test", "m").unwrap();
-        let a = store.append_message(sid, "user", "hello", None, None, None).unwrap();
+        let a = store
+            .append_message(sid, "user", "hello", None, None, None)
+            .unwrap();
         let _b = store
             .append_message(
                 sid,
@@ -514,7 +526,10 @@ mod tests {
         // Compressed messages are no longer returned
         assert_eq!(msgs.len(), 1);
         assert_eq!(msgs[0].tool_name, None);
-        assert_eq!(store.latest_summary(sid).unwrap().unwrap().text, "summary text");
+        assert_eq!(
+            store.latest_summary(sid).unwrap().unwrap().text,
+            "summary text"
+        );
 
         let msgs_all = store.messages_after(sid, 0).unwrap();
         assert!(msgs_all.iter().all(|m| m.id > a));
@@ -527,7 +542,9 @@ mod tests {
         store
             .add_note("User environment is Windows 11", "env", true, Some("env"))
             .unwrap();
-        store.add_note("staged task progress", "todo", false, None).unwrap();
+        store
+            .add_note("staged task progress", "todo", false, None)
+            .unwrap();
         let hits = store.search_notes("Windows", 5).unwrap();
         assert_eq!(hits.len(), 1);
         assert!(hits[0].pinned);
@@ -538,12 +555,23 @@ mod tests {
     #[test]
     fn skill_upsert_and_touch() {
         let (mut store, path) = temp_db();
-        store.upsert_skill("rust-build", "Build a Rust project", "skills/rust-build.md").unwrap();
-        store.upsert_skill("rust-build", "Build a Rust project (new description)", "skills/rust-build.md").unwrap();
+        store
+            .upsert_skill("rust-build", "Build a Rust project", "skills/rust-build.md")
+            .unwrap();
+        store
+            .upsert_skill(
+                "rust-build",
+                "Build a Rust project (new description)",
+                "skills/rust-build.md",
+            )
+            .unwrap();
         store.touch_skill("rust-build").unwrap();
         let skills = store.skills().unwrap();
         assert_eq!(skills.len(), 1);
-        assert_eq!(skills[0].description, "Build a Rust project (new description)");
+        assert_eq!(
+            skills[0].description,
+            "Build a Rust project (new description)"
+        );
         assert_eq!(skills[0].use_count, 1);
         let _ = std::fs::remove_file(path);
     }

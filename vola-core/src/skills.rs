@@ -4,13 +4,14 @@
 //! only keeps the index and counts.
 
 use anyhow::{Context, Result};
+use serde::Serialize;
 use std::collections::BTreeMap;
 use std::fs;
 use std::path::{Path, PathBuf};
 
 use crate::util::slugify;
 
-#[derive(Clone, Debug)]
+#[derive(Clone, Debug, Serialize)]
 pub struct SkillMeta {
     pub name: String,
     pub description: String,
@@ -38,7 +39,9 @@ pub fn parse_frontmatter(text: &str) -> (BTreeMap<String, String>, String) {
                 }
             }
             let body_start = 4 + end + 4;
-            let body = normalized[body_start..].trim_start_matches('\n').to_string();
+            let body = normalized[body_start..]
+                .trim_start_matches('\n')
+                .to_string();
             (meta, body)
         }
         None => (meta, normalized),
@@ -79,7 +82,13 @@ impl Skills {
     }
 
     /// Create or overwrite a skill; returns (metadata, whether an existing file was replaced).
-    pub fn save(&self, name: &str, description: &str, tags: &str, body: &str) -> Result<(SkillMeta, bool)> {
+    pub fn save(
+        &self,
+        name: &str,
+        description: &str,
+        tags: &str,
+        body: &str,
+    ) -> Result<(SkillMeta, bool)> {
         let slug = slugify(name);
         let dir = self.references_dir();
         let path = dir.join(format!("{}.md", slug));
@@ -92,7 +101,8 @@ impl Skills {
             body.trim_end()
         );
         fs::create_dir_all(&dir)?;
-        fs::write(&path, content).with_context(|| format!("failed to write skill: {}", path.display()))?;
+        fs::write(&path, content)
+            .with_context(|| format!("failed to write skill: {}", path.display()))?;
         Ok((
             SkillMeta {
                 name: slug,
@@ -107,7 +117,8 @@ impl Skills {
     /// Render the skill index injected into the system prompt.
     pub fn render_index(&self, metas: &[SkillMeta]) -> String {
         if metas.is_empty() {
-            return "- (no skills yet. After a reusable task, create one with skill_save.)".to_string();
+            return "- (no skills yet. After a reusable task, create one with skill_save.)"
+                .to_string();
         }
         metas
             .iter()
@@ -156,7 +167,10 @@ fn collect_skills(dir: &Path, depth: usize, out: &mut Vec<SkillMeta>) {
             continue;
         };
         let (meta, _) = parse_frontmatter(&text);
-        let name = meta.get("name").cloned().unwrap_or_else(|| file_stem(&path));
+        let name = meta
+            .get("name")
+            .cloned()
+            .unwrap_or_else(|| file_stem(&path));
         let description = meta.get("description").cloned().unwrap_or_default();
         let tags = meta.get("tags").cloned().unwrap_or_default();
         out.push(SkillMeta {
@@ -196,7 +210,12 @@ mod tests {
         let _ = fs::remove_dir_all(&dir);
         let skills = Skills::new(dir.clone());
         let (meta, existed) = skills
-            .save("Demo Skill", "for demonstration", "demo", "step one\nstep two")
+            .save(
+                "Demo Skill",
+                "for demonstration",
+                "demo",
+                "step one\nstep two",
+            )
             .unwrap();
         assert!(!existed);
         assert_eq!(meta.name, "demo-skill");
@@ -204,10 +223,14 @@ mod tests {
         assert_eq!(meta2.description, "for demonstration");
         assert!(body.contains("step two"));
         // overwrite the existing file
-        let (_, existed2) = skills.save("demo-skill", "new description", "", "new body").unwrap();
+        let (_, existed2) = skills
+            .save("demo-skill", "new description", "", "new body")
+            .unwrap();
         assert!(existed2);
         assert_eq!(skills.discover().len(), 1);
-        assert!(skills.render_index(&skills.discover()).contains("demo-skill"));
+        assert!(skills
+            .render_index(&skills.discover())
+            .contains("demo-skill"));
         let _ = fs::remove_dir_all(&dir);
     }
 

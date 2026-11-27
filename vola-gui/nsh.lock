@@ -1,0 +1,11 @@
+{
+  "version": 2,
+  "packages": [
+    {
+      "name": "vola-gui-native",
+      "version": "0.1.0",
+      "path": "ext/vola-gui-native",
+      "module": "vola-gui-native"
+    }
+  ]
+}

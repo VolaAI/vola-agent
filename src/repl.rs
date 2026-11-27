@@ -12,7 +12,10 @@ use crate::tools;
 use crate::util::{fmt_time, snippet};
 
 pub fn run(mut agent: Agent) -> Result<()> {
-    if let Err(e) = crate::interrupt::install() {
+    if let Err(e) = crate::interrupt::install(|| {
+        crate::console::restore();
+        std::process::exit(130);
+    }) {
         eprintln!("[warn] {}", e);
     }
     banner(&agent);

@@ -1,0 +1,74 @@
+{
+  "name": "Vola GUI",
+  "id": "dev.vola.gui",
+  "version": "0.1.0",
+  "build": 1,
+  "dependencies": {
+    "vola-gui-native": {
+      "path": "ext/vola-gui-native"
+    }
+  },
+  "theme": {
+    "cssVars": {
+      "theme": {
+        "radius": "0.625rem"
+      },
+      "light": {
+        "background": "#ffffff",
+        "foreground": "#18181b",
+        "card": "#ffffff",
+        "card-foreground": "#18181b",
+        "popover": "#ffffff",
+        "popover-foreground": "#18181b",
+        "primary": "#4f46e5",
+        "primary-foreground": "#ffffff",
+        "secondary": "#f4f4f5",
+        "secondary-foreground": "#18181b",
+        "muted": "#f4f4f5",
+        "muted-foreground": "#71717a",
+        "accent": "#eef2ff",
+        "accent-foreground": "#312e81",
+        "destructive": "#dc2626",
+        "border": "#e4e4e7",
+        "input": "#e4e4e7",
+        "ring": "#6366f1",
+        "sidebar": "#fafafa",
+        "sidebar-foreground": "#18181b",
+        "sidebar-border": "#e4e4e7",
+        "sidebar-accent": "#f4f4f5",
+        "sidebar-accent-foreground": "#18181b",
+        "sidebar-primary": "#4f46e5",
+        "sidebar-primary-foreground": "#ffffff",
+        "sidebar-ring": "#6366f1"
+      },
+      "dark": {
+        "background": "#09090b",
+        "foreground": "#fafafa",
+        "card": "#18181b",
+        "card-foreground": "#fafafa",
+        "popover": "#18181b",
+        "popover-foreground": "#fafafa",
+        "primary": "#6366f1",
+        "primary-foreground": "#ffffff",
+        "secondary": "#27272a",
+        "secondary-foreground": "#fafafa",
+        "muted": "#27272a",
+        "muted-foreground": "#a1a1aa",
+        "accent": "#312e81",
+        "accent-foreground": "#e0e7ff",
+        "destructive": "#ef4444",
+        "border": "#27272a",
+        "input": "#27272a",
+        "ring": "#818cf8",
+        "sidebar": "#0b0b0d",
+        "sidebar-foreground": "#fafafa",
+        "sidebar-border": "#27272a",
+        "sidebar-accent": "#27272a",
+        "sidebar-accent-foreground": "#fafafa",
+        "sidebar-primary": "#6366f1",
+        "sidebar-primary-foreground": "#ffffff",
+        "sidebar-ring": "#818cf8"
+      }
+    }
+  }
+}

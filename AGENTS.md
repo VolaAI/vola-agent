@@ -16,24 +16,32 @@ own skill library, and keeps sessions plus long-term memory in SQLite.
 ## Repository layout
 
 ```
-Cargo.toml / Cargo.lock   crate metadata and dependencies
+Cargo.toml / Cargo.lock   Cargo workspace: `vola-agent` (root package) + `vola-core`
 config.json               paths, database and local LLM settings (source of truth)
 README.md                 user-facing documentation
 COMMIT_RULES.md           Conventional Commits 1.0.0; required for every commit
-src/main.rs               argv parsing, subcommands, memory CLI, project init
+src/main.rs               argv parsing, subcommands (serve), memory CLI, project init
 src/repl.rs               interactive REPL and slash commands, Ctrl+C routing
 src/console.rs            Windows console UTF-8 setup (set/restore the code page)
-src/interrupt.rs          Ctrl+C state: quit at the prompt, cancel the current turn while working
-src/agent.rs              agent loop: context budget, compaction, tool dispatch, loop guards
-src/config.rs             config.json + env + CLI precedence, path resolution, shell detection
-src/llm.rs                LLM client: native Ollama (/api/chat), OpenAI-compatible (/v1), DeepSeek
-src/memory.rs             SQLite schema and queries: sessions, messages, notes, summaries, skills
-src/prompt.rs             system prompt assembly and compaction-prompt loading/fallback
-src/skills.rs             skill discovery, YAML frontmatter parsing, save/load, index rendering
-src/tools/mod.rs          tool JSON schemas and dispatch (ToolEnv)
-src/tools/shell.rs        run_cmd: timeout, process-tree kill, output truncation, danger blocklist
-src/tools/fsops.rs        read_file / write_file / list_dir, resolved against cfg.home
-src/util.rs               time formatting, truncation, snippet, slugify helpers
+vola-core/src/lib.rs      public modules of the engine crate
+vola-core/src/agent.rs    agent loop: budget, compaction, dispatch, guards, TurnEvent
+vola-core/src/config.rs  config.json + env + CLI precedence, path resolution, shell detection
+vola-core/src/llm.rs      LLM client: native Ollama (/api/chat), OpenAI-compatible (/v1), DeepSeek
+vola-core/src/memory.rs   SQLite schema and queries: sessions, messages, notes, summaries, skills
+vola-core/src/prompt.rs   system prompt assembly and compaction-prompt loading/fallback
+vola-core/src/skills.rs   skill discovery, YAML frontmatter parsing, save/load, index rendering
+vola-core/src/tools/      mod.rs (schemas + dispatch), shell.rs, fsops.rs
+vola-core/src/protocol.rs GUI wire types (JSON over WebSocket)
+vola-core/src/server.rs   WebSocket API: one Agent per connection, turns on worker threads
+vola-core/src/ws.rs       minimal blocking RFC 6455 server (handshake, frames, ping/pong)
+vola-core/src/interrupt.rs cancellation state shared by the REPL and the server
+vola-core/src/util.rs     time formatting, truncation, snippet, slugify helpers
+vola-gui/                 native GUI: an nsh (Native Shell) project, not a Cargo workspace member
+vola-gui/App.tsx          mount point (`mount` + `Window`)
+vola-gui/src/protocol.ts  wire types mirroring vola-core/src/protocol.rs
+vola-gui/src/store.ts     signals, WebSocket client, actions
+vola-gui/src/ui.tsx       screens and components
+vola-gui/ext/vola-gui-native/  Rust nshm crate: `CoreServer` launches `vola-agent serve`
 agent/SYSTEM.md           default system prompt
 agent/MEMORY.md           default compaction prompt (formerly PROMPT_INIT.md)
 agent/skills/SKILL.md     skill library manager page
@@ -51,6 +59,8 @@ agent/data/memory.db      SQLite database (gitignored, created on demand)
 - `chat` and `ask` call `LlmClient::ensure_ready` before creating a session. Ollama and
   OpenAI-compatible providers must be reachable and list the configured model; DeepSeek only
   requires an API key (its `/v1/models` endpoint is optional).
+- The GUI needs `nsh` 0.7+ (Native Shell). It is a separate project under `vola-gui/` and is
+  not a member of the Cargo workspace.
 
 ## Build, test, run
 
@@ -63,9 +73,18 @@ On Windows, load the MSVC environment first (`vcvars64.bat`, or the recipe in
 `agent/skills/references/rust-windows-build.md`); otherwise `/usr/bin/link.exe` may shadow the
 MSVC linker.
 
+The GUI is checked and run with nsh (the first `nsh check` compiles `nsh-core`, so it is slow):
+
+```shell
+nsh check vola-gui                 # TSX type check + cargo check of ext/vola-gui-native
+nsh run vola-gui                   # dev host with hot reload
+nsh test vola-gui                  # headless UI tests
+```
+
 ```bash
 ./target/release/vola-agent              # REPL
 ./target/release/vola-agent ask "..."    # one-shot
+./target/release/vola-agent serve        # WebSocket API for vola-gui (127.0.0.1:8765)
 ./target/release/vola-agent models       # Ollama models
 ./target/release/vola-agent skills       # skill library
 ./target/release/vola-agent sessions | tools | init
@@ -105,8 +124,8 @@ Resolution rules:
    block is treated as a provider tagged `ollama`.
 6. Unknown keys are ignored; malformed JSON or a malformed value is a hard startup error.
 
-When adding a config key, update all of: `FileConfig` and `Config` in `src/config.rs`, the
-`load_from` mapping and defaults, `config.json`, `README.md`, and a parsing/resolution test.
+When adding a config key, update all of: `FileConfig` and `Config` in `vola-core/src/config.rs`,
+the `load_from` mapping and defaults, `config.json`, `README.md`, and a parsing/resolution test.
 
 ## Behavior invariants
 
@@ -128,9 +147,17 @@ When adding a config key, update all of: `FileConfig` and `Config` in `src/confi
   checks between rounds and tool calls (model requests are run on a helper thread so the REPL
   never blocks), and `run_cmd` kills its process tree. Tool calls whose results were already
   requested get `[cancelled]` replies so a `tool_calls` message never loses its pairing.
-- `Agent::respond_with` reports `TurnProgress` (round, context chars, prompt/output tokens)
-  for the REPL status line; `respond` is the no-progress wrapper. `completion_tokens` comes from
-  the provider usage (OpenAI `usage.completion_tokens`, Ollama `eval_count`), summed per turn.
+- `Agent::respond_events` is the loop's only output path: it emits `TurnEvent`s (notices, tool
+  calls, tool results, progress), and `respond_with` maps them back to the REPL's text lines. The
+  WebSocket server forwards the same events, so CLI and GUI never drift. `completion_tokens` comes
+  from the provider usage (OpenAI `usage.completion_tokens`, Ollama `eval_count`), summed per turn.
+- The GUI protocol lives in `vola-core/src/protocol.rs`; keep `vola-gui/src/protocol.ts` in sync
+  and bump `PROTOCOL_VERSION` on incompatible changes. One JSON object per WebSocket text frame;
+  server messages carry `type` and an optional `data`.
+- `server.rs` runs one `Agent` per connection. Turns go through `TURN_LOCK` because the
+  cancellation flag in `interrupt` is process-wide; `cancel` only touches it while
+  `TURN_ACTIVE` is set. The reader thread keeps answering `cancel` while a turn worker runs.
+  A cancelled turn still gets `[cancelled]` tool replies, so `tool_calls` stays paired.
 - The spinner/ANSI status line is used only when `stdout.is_terminal()`; piped input and `ask`
   stay plain text. The first round labels token counts `est~` until the provider reports usage.
 - Child-process and file text is decoded as UTF-8 first, then the Windows ANSI code page (GBK), so
@@ -141,15 +168,18 @@ When adding a config key, update all of: `FileConfig` and `Config` in `src/confi
 
 ## Extending the agent
 
-- New tool: add its schema in `src/tools/mod.rs` (`schemas()`), add its name to `names()`,
-  implement it in `dispatch()`, and use `arg_str`/`arg_usize`/`arg_bool` helpers with clear
-  `[Tool error]` messages. Keep results compact; the model sees them verbatim.
+- New tool: add its schema in `vola-core/src/tools/mod.rs` (`schemas()`), add its name to
+  `names()`, implement it in `dispatch()`, and use `arg_str`/`arg_usize`/`arg_bool` helpers with
+  clear `[Tool error]` messages. Keep results compact; the model sees them verbatim.
 - New skill: put a Markdown file in `agent/skills/references/` with YAML frontmatter
   (`name`, `description`, `tags`); `skill_save` does this automatically. `SKILL.md` is the
   conventions page, not a domain skill. Files are the source of truth; the DB index is rebuilt
   at startup.
-- New memory or session field: update `src/memory.rs` migrations, row structs and queries, plus
-  callers in `agent.rs`, `repl.rs`, `main.rs` or `tools/mod.rs`.
+- New memory or session field: update `vola-core/src/memory.rs` migrations, row structs and
+  queries, plus callers in `agent.rs`, `repl.rs`, `main.rs`, `server.rs` or `tools/mod.rs`.
+- New GUI request: add the variant to `ClientMessage` in `vola-core/src/protocol.rs`, handle it in
+  `server.rs`, add a `ServerMessage` reply if needed, mirror both in `vola-gui/src/protocol.ts`,
+  handle the reply in `vola-gui/src/store.ts`, and surface it in `vola-gui/src/ui.tsx`.
 - Keep user-facing behavior documented; update `README.md` when commands, config keys, file
   names or defaults change.
 
@@ -163,10 +193,16 @@ When adding a config key, update all of: `FileConfig` and `Config` in `src/confi
   actionable message.
 - `vola-agent sessions` lists saved sessions; `vola-agent memory list|search|add` manages long-term
   notes; `vola-agent skills` lists the skill library.
+- `vola-agent serve [--addr host:port]` exposes the GUI's WebSocket API (default
+  `127.0.0.1:8765`, or `VOLA_AGENT_SERVE_ADDR`); `--port <n>` is shorthand for
+  `127.0.0.1:<n>`.
 
 ## Workspace
 
 You should put all temporary files (tools scripts or other temp files) into folder temp, do not affecting the source code directory and repository.
+
+`vola-gui/` is a separate nsh project with its own toolchain and `target/`; do not add it to the
+Cargo workspace. Its generated `.nsh/` directory is gitignored.
 
 ## Commit rules
 
