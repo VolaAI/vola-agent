@@ -241,12 +241,6 @@ impl Config {
             &base,
             &["agent/assets", "assets"],
         );
-        let scripts_dir = resolve_path(
-            "VOLA_AGENT_SCRIPTS",
-            file.scripts.as_deref(),
-            &base,
-            &["agent/scripts", "scripts"],
-        );
         let skills_dir = resolve_path(
             "VOLA_AGENT_SKILLS",
             file.skills.as_deref(),
@@ -265,6 +259,30 @@ impl Config {
                 "AGENT.md",
             ],
         );
+        // Scripts default to `scripts/` next to the system prompt, so moving SYSTEM.md
+        // moves the library with it. An explicit config/env value still wins.
+        let scripts_dir = match file
+            .scripts
+            .as_deref()
+            .map(str::trim)
+            .filter(|v| !v.is_empty())
+        {
+            Some(raw) => {
+                let p = PathBuf::from(raw);
+                if p.is_absolute() {
+                    p
+                } else {
+                    base.join(p)
+                }
+            }
+            None => match env_str("VOLA_AGENT_SCRIPTS") {
+                Some(p) => PathBuf::from(p),
+                None => prompt_path
+                    .parent()
+                    .map(|d| d.join("scripts"))
+                    .unwrap_or_else(|| base.join("scripts")),
+            },
+        };
         let summarizer_path = resolve_path(
             "VOLA_AGENT_SUMMARIZER",
             file.memory.as_deref(),
@@ -558,6 +576,32 @@ mod tests {
             serde_json::from_str(r#"{"llm": {"ollama": {"model": "old-model"}}}"#).unwrap();
         let legacy = file.llm.ollama.expect("legacy ollama block");
         assert_eq!(legacy.model.as_deref(), Some("old-model"));
+    }
+
+    #[test]
+    fn scripts_default_to_the_prompt_directory() {
+        let dir =
+            std::env::temp_dir().join(format!("vola-agent-config-scripts-{}", std::process::id()));
+        let _ = fs::remove_dir_all(&dir);
+        fs::create_dir_all(&dir).unwrap();
+        let cfg_path = dir.join("config.json");
+        fs::write(
+            &cfg_path,
+            r#"{"llm":{"default":"ollama","providers":[{"tag":"ollama","type":"ollama","config":{}}]}}"#,
+        )
+        .unwrap();
+        let cfg = Config::load_from(Some(&cfg_path)).unwrap();
+        assert_eq!(cfg.scripts_dir, dir.join("agent/scripts"));
+
+        // An explicit key still wins over the prompt-derived default.
+        fs::write(
+            &cfg_path,
+            r#"{"scripts":"custom/scripts","llm":{"default":"ollama","providers":[{"tag":"ollama","type":"ollama","config":{}}]}}"#,
+        )
+        .unwrap();
+        let cfg = Config::load_from(Some(&cfg_path)).unwrap();
+        assert_eq!(cfg.scripts_dir, dir.join("custom/scripts"));
+        let _ = fs::remove_dir_all(&dir);
     }
 
     #[test]

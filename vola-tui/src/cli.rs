@@ -2,7 +2,7 @@
 
 use anyhow::{bail, Context, Result};
 use std::path::{Path, PathBuf};
-use vola_core::{agent, config::Config, llm, memory, server, skills, tools, util};
+use vola_core::{agent, config::Config, llm, memory, scripts, server, skills, tools, util};
 
 pub(crate) fn run() -> Result<()> {
     let raw: Vec<String> = std::env::args().skip(1).collect();
@@ -183,6 +183,30 @@ pub(crate) fn run() -> Result<()> {
                     m.name,
                     m.description,
                     tags,
+                    m.path.display()
+                );
+            }
+            Ok(())
+        }
+        "scripts" => {
+            let scripts = scripts::Scripts::new(cfg.scripts_dir.clone());
+            let _ = scripts.write_index();
+            let metas = scripts.discover();
+            if metas.is_empty() {
+                println!("(script directory is empty: {})", cfg.scripts_dir.display());
+            }
+            for m in metas {
+                println!(
+                    "{:<28} {:<10} v{:<6} {}\n    {}{}",
+                    m.name,
+                    m.lang,
+                    m.version,
+                    m.when,
+                    if m.usage.is_empty() {
+                        String::new()
+                    } else {
+                        format!("usage: {}\n    ", m.usage)
+                    },
                     m.path.display()
                 );
             }
@@ -389,6 +413,7 @@ fn print_help() {
         ),
         ("vola-agent ask \"<question>\"", "one-shot question"),
         ("vola-agent skills", "list skills"),
+        ("vola-agent scripts", "list the script library"),
         (
             "vola-agent memory add <content> [--pin] | search <keyword> | delete <id> | list",
             "",

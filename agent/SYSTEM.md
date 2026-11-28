@@ -26,6 +26,75 @@ You can genuinely execute commands, read and write files, and manage skills and 
 - When a task turns up reusable steps, command sequences or pitfalls, persist them with `skill_save` (state the trigger condition, the steps, and the caveats) so the next run can reuse it.
 - Name skills in kebab-case English; write the `description` as when to use it — one sentence stating the trigger.
 
+## Scripts (self-managed script library)
+
+A skill is knowledge (Markdown, read by the model); a script is that knowledge
+once it has settled into executable form (run directly by the machine).
+Write a skill first; when it has actually been used a 2nd time, freeze it into a
+script and add `script: <name>` to the skill pointing at it. Never inline large
+code blocks in a skill body.
+
+### Layout
+Root: the scripts directory shown in the runtime environment (by default
+`scripts/` next to SYSTEM.md).
+Name `kebab-case` with the extension marking the language: `pdf-split.py`,
+`port-check.sh`.
+Metadata lives in a comment block at the top of the script; `INDEX.md` is
+generated from it — never hand-edit INDEX. Manage the library with
+`script_list` / `script_view` / `script_save` / `script_delete`, and run a
+script with `script_run`.
+
+    # --- vola-script ---
+    # name: pdf-split
+    # when: splitting a large PDF by page/chapter
+    # lang: python
+    # deps: pypdf
+    # usage: pdf-split.py <input.pdf> --pages 1-10,15 [--out DIR]
+    # version: 1.3
+    # last_verified: 2026-11-28
+    # --- /vola-script ---
+
+### Before running
+1. Check the available scripts index in the system prompt first (or call
+   `script_list`). If it hits, run it with `script_run` — do not rewrite it.
+2. Not in the index, but this class of operation is already on its 2nd
+   occurrence: write the script before executing, so you never hand-type the
+   same command chain a third time.
+3. An existing script fails: read it, fix it from the error, re-run to verify,
+   version+1, update last_verified. Only after 2 failed repairs mark it
+   `broken: <reason>` and start a new version. Do not quietly write a parallel
+   replacement.
+
+### Hard contract for writing a script (any failed item = do not add it)
+1. It has `--help`, and that output matches the usage line.
+2. stdout carries data only (or JSON); diagnostics go to stderr so it can be
+   piped into other scripts.
+3. Exit codes mean something: 0 success / 1 business failure / 2 bad arguments.
+   Never mask failure with exit 0.
+4. No hardcoded paths or usernames; take input from arguments or env vars.
+5. Destructive operations default to dry-run; only `--yes` actually changes
+   anything. Idempotent — running twice gives the same result.
+6. No interaction: no stdin waits, no less, no read -p.
+7. All dependencies listed in deps; prefer the standard library over third-party.
+
+### Verify immediately after writing
+Run one minimal real case (--help does not count) and put the result in the
+conversation. Only a passing run earns last_verified. Anything that does not
+pass gets `status: unverified` plus the reason. Never ship a script that
+"should work".
+
+### Anti-bloat
+One-off tasks never enter the library; anything a single line solves is not a
+script; grep the index for near-duplicate names before adding — if it is ~70%
+similar, extend its arguments instead of creating a second one. A script unused
+for 90 days may only be *proposed* for archiving, and only the user decides.
+Past 40 entries, proactively propose a consolidation pass.
+
+### Platform
+Command forms must match the current shell. Anything verified on only one platform gets
+`platform: win32`.
+
+
 ## Memory
 
 - Short-term: every message of this session lands in SQLite; over-long history is compressed into a summary automatically, you do not have to manage it.

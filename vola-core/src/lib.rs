@@ -12,6 +12,7 @@ pub mod llm;
 pub mod memory;
 pub mod prompt;
 pub mod protocol;
+pub mod scripts;
 pub mod server;
 pub mod skills;
 pub mod tools;

@@ -10,6 +10,7 @@ use std::time::Duration;
 
 use crate::config::Config;
 use crate::memory::{render_message, MemoryStore};
+use crate::scripts::Scripts;
 use crate::skills::Skills;
 use crate::util::truncate_middle;
 
@@ -17,6 +18,7 @@ pub struct ToolEnv<'a> {
     pub cfg: &'a Config,
     pub store: &'a mut MemoryStore,
     pub skills: &'a Skills,
+    pub scripts: &'a Scripts,
 }
 
 /// Tool list exposed to the model (OpenAI function schema).
@@ -125,6 +127,78 @@ pub fn schemas() -> Vec<Value> {
         json!({
             "type": "function",
             "function": {
+                "name": "script_list",
+                "description": "List the scripts in your script library (name, language, version, when to use, usage).",
+                "parameters": {"type": "object", "properties": {}, "required": []}
+            }
+        }),
+        json!({
+            "type": "function",
+            "function": {
+                "name": "script_view",
+                "description": "Read one script in full (metadata header + code). Check the script index before rewriting an existing script.",
+                "parameters": {
+                    "type": "object",
+                    "properties": {"name": {"type": "string", "description": "script name or file name, e.g. pdf-split or pdf-split.py"}},
+                    "required": ["name"]
+                }
+            }
+        }),
+        json!({
+            "type": "function",
+            "function": {
+                "name": "script_save",
+                "description": "Create or update a reusable script. The metadata header is generated automatically. Follow the hard contract: --help, data on stdout, meaningful exit codes, no hardcoded paths, dry-run by default for destructive ops, non-interactive, deps listed. Verify it with one real run before claiming last_verified.",
+                "parameters": {
+                    "type": "object",
+                    "properties": {
+                        "name": {"type": "string", "description": "kebab-case name, optionally with extension (pdf-split or pdf-split.py)"},
+                        "lang": {"type": "string", "description": "python, bash, javascript, powershell, ... (optional if the name has an extension)"},
+                        "when": {"type": "string", "description": "one sentence: when to use this script"},
+                        "body": {"type": "string", "description": "the script source (without the metadata header)"},
+                        "deps": {"type": "string", "description": "comma-separated dependencies (optional)"},
+                        "usage": {"type": "string", "description": "usage line, e.g. pdf-split.py <input.pdf> --pages 1-10 (optional)"},
+                        "version": {"type": "string", "description": "version (optional; auto-increments on update)"},
+                        "last_verified": {"type": "string", "description": "YYYY-MM-DD of the last real run (optional)"},
+                        "status": {"type": "string", "description": "e.g. unverified or broken: reason (optional)"},
+                        "platform": {"type": "string", "description": "e.g. win32 if only verified there (optional)"}
+                    },
+                    "required": ["name", "when", "body"]
+                }
+            }
+        }),
+        json!({
+            "type": "function",
+            "function": {
+                "name": "script_delete",
+                "description": "Delete a script from the library by name.",
+                "parameters": {
+                    "type": "object",
+                    "properties": {"name": {"type": "string"}},
+                    "required": ["name"]
+                }
+            }
+        }),
+        json!({
+            "type": "function",
+            "function": {
+                "name": "script_run",
+                "description": "Run a script from the library with arguments. Picks the interpreter from the script's language/extension. Returns stdout/stderr/exit code like run_cmd.",
+                "parameters": {
+                    "type": "object",
+                    "properties": {
+                        "name": {"type": "string", "description": "script name or file name"},
+                        "args": {"type": "string", "description": "arguments passed to the script (optional)"},
+                        "timeout_secs": {"type": "integer", "description": "timeout in seconds, 1-600, default 60"},
+                        "cwd": {"type": "string", "description": "optional working directory"}
+                    },
+                    "required": ["name"]
+                }
+            }
+        }),
+        json!({
+            "type": "function",
+            "function": {
                 "name": "memory_add",
                 "description": "Write a long-term memory (facts/preferencess/pitfalls kept across sessions). Facts with pinned=true are injected into the system prompt every time, so keep only the most critical ones (e.g. toolchain paths, build commands).",
                 "parameters": {
@@ -178,6 +252,11 @@ pub fn names() -> Vec<&'static str> {
         "skill_list",
         "skill_view",
         "skill_save",
+        "script_list",
+        "script_view",
+        "script_save",
+        "script_delete",
+        "script_run",
         "memory_add",
         "memory_search",
         "memory_delete",
@@ -238,6 +317,32 @@ fn arg_bool(args: &Value, keys: &[&str]) -> Option<bool> {
     None
 }
 
+/// Accept an argument list as a string or a JSON array (models send both).
+fn arg_argv(args: &Value, keys: &[&str]) -> Option<String> {
+    for k in keys {
+        if let Some(v) = args.get(*k) {
+            match v {
+                Value::String(s) if !s.trim().is_empty() => return Some(s.clone()),
+                Value::Array(items) => {
+                    let parts: Vec<String> = items
+                        .iter()
+                        .map(|item| match item {
+                            Value::String(s) => s.clone(),
+                            other => other.to_string(),
+                        })
+                        .collect();
+                    if !parts.is_empty() {
+                        return Some(parts.join(" "));
+                    }
+                }
+                Value::Number(n) => return Some(n.to_string()),
+                _ => {}
+            }
+        }
+    }
+    None
+}
+
 fn require(args: &Value, keys: &[&str], tool: &str) -> Result<String> {
     arg_str(args, keys).ok_or_else(|| {
         anyhow::anyhow!(
@@ -246,6 +351,41 @@ fn require(args: &Value, keys: &[&str], tool: &str) -> Result<String> {
             tool
         )
     })
+}
+
+/// Build the interpreter command for a script, based on its extension.
+fn script_command(meta: &crate::scripts::ScriptMeta, extra: &str) -> String {
+    let quoted = format!("\"{}\"", meta.path.display());
+    let ext = meta
+        .path
+        .extension()
+        .and_then(|e| e.to_str())
+        .unwrap_or("")
+        .to_ascii_lowercase();
+    let base = match ext.as_str() {
+        "py" => format!("python {}", quoted),
+        "sh" | "bash" => format!("bash {}", quoted),
+        "ps1" => format!(
+            "powershell -NoLogo -NoProfile -NonInteractive -File {}",
+            quoted
+        ),
+        "bat" | "cmd" => format!("cmd /c {}", quoted),
+        "js" => format!("node {}", quoted),
+        "ts" => format!("npx --yes tsx {}", quoted),
+        "rb" => format!("ruby {}", quoted),
+        "lua" => format!("lua {}", quoted),
+        "pl" => format!("perl {}", quoted),
+        "php" => format!("php {}", quoted),
+        "r" => format!("Rscript {}", quoted),
+        "go" => format!("go run {}", quoted),
+        _ => quoted,
+    };
+    let extra = extra.trim();
+    if extra.is_empty() {
+        base
+    } else {
+        format!("{} {}", base, extra)
+    }
 }
 
 /// Run a tool and return the text shown to the model (errors come back as text too, so the model can self-correct).
@@ -372,6 +512,169 @@ fn dispatch(env: &mut ToolEnv, name: &str, args: &Value) -> Result<String> {
                 body.chars().count()
             ))
         }
+        "script_list" => {
+            let metas = env.scripts.discover();
+            let mut s = format!(
+                "[script library] {} scripts (directory {})\n",
+                metas.len(),
+                env.scripts.dir().display()
+            );
+            if metas.is_empty() {
+                s.push_str("(no scripts yet. Use script_save to capture one.)\n");
+            }
+            for m in &metas {
+                s.push_str(&format!(
+                    "- {} ({}) v{} — {} [{}]\n  usage: {}\n  file: {}\n",
+                    m.name,
+                    if m.lang.is_empty() {
+                        "?"
+                    } else {
+                        m.lang.as_str()
+                    },
+                    if m.version.is_empty() {
+                        "?"
+                    } else {
+                        m.version.as_str()
+                    },
+                    m.when,
+                    if m.status.is_empty() {
+                        "ok"
+                    } else {
+                        m.status.as_str()
+                    },
+                    if m.usage.is_empty() {
+                        "(none)"
+                    } else {
+                        m.usage.as_str()
+                    },
+                    m.path.display()
+                ));
+            }
+            Ok(s)
+        }
+        "script_view" => {
+            let name = require(args, &["name", "script", "script_name"], "script_view")?;
+            match env.scripts.load(&name) {
+                Some((meta, text)) => {
+                    let (text, cut) = truncate_middle(&text, env.cfg.output_limit);
+                    Ok(format!(
+                        "[script] {} ({}) v{}\n\n{}{}",
+                        meta.name,
+                        if meta.when.is_empty() {
+                            "no description"
+                        } else {
+                            meta.when.as_str()
+                        },
+                        if meta.version.is_empty() {
+                            "?"
+                        } else {
+                            meta.version.as_str()
+                        },
+                        text,
+                        if cut { "\n[truncated]" } else { "" }
+                    ))
+                }
+                None => {
+                    let available: Vec<String> =
+                        env.scripts.discover().into_iter().map(|m| m.name).collect();
+                    Ok(format!(
+                        "[no script `{}`] available: {}",
+                        name,
+                        if available.is_empty() {
+                            "none".to_string()
+                        } else {
+                            available.join(", ")
+                        }
+                    ))
+                }
+            }
+        }
+        "script_save" => {
+            let name = require(args, &["name", "script", "title"], "script_save")?;
+            let when =
+                arg_str(args, &["when", "description", "desc", "trigger"]).unwrap_or_default();
+            let body = require(
+                args,
+                &["body", "content", "code", "source", "text"],
+                "script_save",
+            )?;
+            let lang = arg_str(args, &["lang", "language"]).unwrap_or_default();
+            let deps = arg_str(args, &["deps", "dependencies"]).unwrap_or_default();
+            let usage = arg_str(args, &["usage", "usage_line"]).unwrap_or_default();
+            let version = arg_str(args, &["version"]).unwrap_or_default();
+            let last_verified = arg_str(args, &["last_verified", "verified"]).unwrap_or_default();
+            let status = arg_str(args, &["status"]).unwrap_or_default();
+            let platform = arg_str(args, &["platform"]).unwrap_or_default();
+            let spec = crate::scripts::ScriptSpec {
+                name: &name,
+                lang: &lang,
+                when: &when,
+                deps: &deps,
+                usage: &usage,
+                version: &version,
+                last_verified: &last_verified,
+                status: &status,
+                platform: &platform,
+                body: &body,
+            };
+            let (meta, existed) = env.scripts.save(&spec)?;
+            env.scripts.write_index()?;
+            Ok(format!(
+                "[script {}] {} -> {}\n[when] {}\n[lang] {}\n[version] {}\n[body {} chars]",
+                if existed { "updated" } else { "created" },
+                meta.name,
+                meta.path.display(),
+                meta.when,
+                meta.lang,
+                meta.version,
+                body.chars().count()
+            ))
+        }
+        "script_delete" => {
+            let name = require(args, &["name", "script"], "script_delete")?;
+            let ok = env.scripts.delete(&name)?;
+            env.scripts.write_index()?;
+            Ok(if ok {
+                format!("[script deleted] {}", crate::scripts::normalize_name(&name))
+            } else {
+                format!("[script] no script named `{}`", name)
+            })
+        }
+        "script_run" => {
+            let name = require(args, &["name", "script", "script_name"], "script_run")?;
+            let extra = arg_argv(args, &["args", "arguments", "argv"]).unwrap_or_default();
+            let timeout = arg_usize(args, &["timeout_secs", "timeout", "timeout_seconds"])
+                .unwrap_or(env.cfg.cmd_timeout_secs as usize)
+                .clamp(1, 600) as u64;
+            let cwd = arg_str(args, &["cwd", "workdir", "dir"]);
+            let cwd_path = cwd
+                .as_deref()
+                .map(|c| fsops::resolve(env.cfg, c))
+                .or_else(|| Some(env.cfg.home.clone()));
+            let meta = env.scripts.find(&name).ok_or_else(|| {
+                anyhow::anyhow!(
+                    "no script named `{}`; use script_list to see the library",
+                    name
+                )
+            })?;
+            let cmd = script_command(&meta, &extra);
+            let out = shell::run(
+                env.cfg,
+                &cmd,
+                Duration::from_secs(timeout),
+                cwd_path.as_deref(),
+                None,
+            )?;
+            let mut text = out.render(&cmd);
+            let (t, cut) = truncate_middle(&text, env.cfg.output_limit);
+            if cut {
+                text = format!(
+                    "{}\n[hint] the output exceeded the cap and was truncated. Redirect it to a file and read it in pages with read_file.",
+                    t
+                );
+            }
+            Ok(text)
+        }
         "memory_add" => {
             let content = require(args, &["content", "text", "note", "value"], "memory_add")?;
             let tags = arg_str(args, &["tags"]).unwrap_or_default();
@@ -427,5 +730,40 @@ fn dispatch(env: &mut ToolEnv, name: &str, args: &Value) -> Result<String> {
                 names().join(", ")
             ))
         }
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::scripts::ScriptMeta;
+    use std::path::PathBuf;
+
+    fn meta(path: &str) -> ScriptMeta {
+        ScriptMeta {
+            name: "demo".to_string(),
+            when: String::new(),
+            lang: String::new(),
+            deps: String::new(),
+            usage: String::new(),
+            version: String::new(),
+            last_verified: String::new(),
+            status: String::new(),
+            platform: String::new(),
+            path: PathBuf::from(path),
+        }
+    }
+
+    #[test]
+    fn script_command_picks_the_interpreter() {
+        assert!(script_command(&meta("pdf-split.py"), "").starts_with("python "));
+        assert!(script_command(&meta("port-check.sh"), "").starts_with("bash "));
+        assert!(script_command(&meta("run.ps1"), "").contains("-File "));
+        assert!(script_command(&meta("run.bat"), "").starts_with("cmd /c "));
+        assert!(script_command(&meta("app.js"), "").starts_with("node "));
+        assert_eq!(
+            script_command(&meta("pdf-split.py"), "--pages 1-10"),
+            "python \"pdf-split.py\" --pages 1-10"
+        );
     }
 }

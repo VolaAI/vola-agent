@@ -1,6 +1,5 @@
 {
   "assets": "agent/assets",
-  "scripts": "agent/scripts",
   "skills": "agent/skills",
   "system": "agent/SYSTEM.md",
   "memory": "agent/MEMORY.md",

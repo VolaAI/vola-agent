@@ -318,6 +318,7 @@ fn command(agent: &mut Agent, line: &str) -> Result<bool> {
                 ("/resume <id>", "resume a session"),
                 ("/skills", "list the skill library"),
                 ("/skill <name>", "show the full skill text"),
+                ("/scripts", "list the script library"),
                 ("/model [name]", "show/switch model"),
                 ("/models", "list Ollama models"),
                 ("/ctx", "context and compaction status"),
@@ -403,6 +404,35 @@ fn command(agent: &mut Agent, line: &str) -> Result<bool> {
                     }
                     None => println!("no skill `{}`", rest),
                 }
+            }
+        }
+        "/scripts" => {
+            let _ = agent.scripts.write_index();
+            let metas = agent.scripts.discover();
+            println!(
+                "{} scripts in the library ({})",
+                metas.len(),
+                agent.scripts.dir().display()
+            );
+            for m in &metas {
+                println!(
+                    "  {} ({}) v{} — {} [{}]",
+                    m.name,
+                    m.lang,
+                    m.version,
+                    m.when,
+                    if m.status.is_empty() {
+                        "ok"
+                    } else {
+                        m.status.as_str()
+                    }
+                );
+                if !m.usage.is_empty() {
+                    println!("    usage: {}", m.usage);
+                }
+            }
+            if metas.is_empty() {
+                println!("  (empty. Capture one with script_save after a reusable task.)");
             }
         }
         "/model" => {

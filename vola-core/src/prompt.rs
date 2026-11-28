@@ -61,6 +61,7 @@ pub fn build(
     cfg: &Config,
     agent_md: &str,
     skills_index: &str,
+    scripts_index: &str,
     pinned: &[NoteRow],
     summary: Option<&str>,
     session_id: i64,
@@ -118,6 +119,10 @@ pub fn build(
     s.push_str("\n## Skills you already have (SKILL index)\n");
     s.push_str(skills_index);
     s.push_str("\n\n(Before a related task, read the steps with skill_view; after finishing, capture any new reusable approach with skill_save.)\n");
+
+    s.push_str("\n## Scripts you already have (SCRIPT index)\n");
+    s.push_str(scripts_index);
+    s.push_str("\n\n(Before writing a new script, check this index and run an existing one with script_run; after a reusable task, capture it with script_save.)\n");
 
     if !pinned.is_empty() {
         s.push_str("\n## Pinned long-term memory (injected every time)\n");

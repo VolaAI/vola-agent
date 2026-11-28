@@ -12,6 +12,7 @@ use crate::interrupt;
 use crate::llm::{ChatResponse, LlmClient, Message};
 use crate::memory::MemoryStore;
 use crate::prompt;
+use crate::scripts::Scripts;
 use crate::skills::Skills;
 use crate::tools::{self, ToolEnv};
 use crate::util::{char_len, snippet};
@@ -67,6 +68,7 @@ pub struct Agent {
     pub client: Arc<LlmClient>,
     pub store: MemoryStore,
     pub skills: Skills,
+    pub scripts: Scripts,
     pub session_id: i64,
     /// Compressor prompt, loaded from agent/MEMORY.md at startup (see `prompt::load_summarizer`).
     pub summarizer: String,
@@ -80,6 +82,8 @@ impl Agent {
         client.ensure_ready()?;
         let store = MemoryStore::open(&cfg.db_path)?;
         let skills = Skills::new(cfg.skills_dir.clone());
+        let scripts = Scripts::new(cfg.scripts_dir.clone());
+        let _ = scripts.write_index();
         let mut store = store;
         let session_id = match session_id {
             Some(id) => id,
@@ -95,6 +99,7 @@ impl Agent {
             client,
             store,
             skills,
+            scripts,
             session_id,
             summarizer,
         })
@@ -525,6 +530,7 @@ impl Agent {
                     cfg: &self.cfg,
                     store: &mut self.store,
                     skills: &self.skills,
+                    scripts: &self.scripts,
                 };
                 let result = tools::execute(&mut env, &name, &args);
                 let is_err =
@@ -614,11 +620,14 @@ impl Agent {
                 .upsert_skill(&m.name, &m.description, &m.path.to_string_lossy());
         }
         let skills_index = self.skills.render_index(&metas);
+        let script_metas = self.scripts.discover();
+        let scripts_index = self.scripts.render_index(&script_metas);
         let agent_md = prompt::load_agent_md(&self.cfg)?;
 
         loop {
             let sys_len = char_len(&agent_md)
                 + char_len(&skills_index)
+                + char_len(&scripts_index)
                 + summary_text.chars().count()
                 + pinned
                     .iter()
@@ -631,6 +640,7 @@ impl Agent {
                     &self.cfg,
                     &agent_md,
                     &skills_index,
+                    &scripts_index,
                     &pinned,
                     if summary_text.is_empty() {
                         None

@@ -6,7 +6,7 @@ Guidance for coding agents working in this repository.
 
 `vola-agent` is An Agent written in Rust. It drives a local Ollama model through the
 OpenAI-compatible `/v1/chat/completions` tools protocol, executes commands on the host, reads and writes files, curates its
-own skill library, and keeps sessions plus long-term memory in SQLite.
+own skill and script libraries, and keeps sessions plus long-term memory in SQLite.
 
 - Rust 2021 workspace producing a single binary `vola-agent` (root package).
 - `vola-core` holds the engine; `vola-tui` holds the terminal front-end (argv parsing,
@@ -34,6 +34,7 @@ vola-core/src/llm.rs      LLM client: native Ollama (/api/chat), OpenAI-compatib
 vola-core/src/memory.rs   SQLite schema and queries: sessions, messages, notes, summaries, skills
 vola-core/src/prompt.rs   system prompt assembly and compaction-prompt loading/fallback
 vola-core/src/skills.rs   skill discovery, YAML frontmatter parsing, save/load, index rendering
+vola-core/src/scripts.rs  script library: metadata parsing, CRUD, index rendering
 vola-core/src/tools/      mod.rs (schemas + dispatch), shell.rs, fsops.rs
 vola-core/src/protocol.rs GUI wire types (JSON over WebSocket)
 vola-core/src/server.rs   WebSocket API: one Agent per connection, turns on worker threads
@@ -91,6 +92,7 @@ nsh test vola-gui                  # headless UI tests
 ./target/release/vola-agent serve        # WebSocket API for vola-gui (127.0.0.1:8765)
 ./target/release/vola-agent models       # Ollama models
 ./target/release/vola-agent skills       # skill library
+./target/release/vola-agent scripts      # script library
 ./target/release/vola-agent sessions | tools | init
 ```
 
@@ -105,7 +107,7 @@ value or delete the dead code.
 | Key               | Meaning                                                                                                                                                                                                 |
 | ----------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
 | `assets`          | static-asset directory                                                                                                                                                                                  |
-| `scripts`         | reusable-scripts directory                                                                                                                                                                              |
+| `scripts`         | reusable-scripts directory (default: `scripts/` next to the `system` prompt)                                                                                                                            |
 | `skills`          | skill library directory                                                                                                                                                                                 |
 | `system`          | system prompt file (`agent/SYSTEM.md`)                                                                                                                                                                  |
 | `memory`          | compaction prompt file (`agent/MEMORY.md`)                                                                                                                                                              |
@@ -143,6 +145,9 @@ the `load_from` mapping and defaults, `config.json`, `README.md`, and a parsing/
   separated from its following `tool` results (Ollama would return HTTP 400).
 - Pinned notes are injected into the system prompt every turn; all other notes are fetched
   with `memory_search`.
+- The skill and script indexes are injected into the system prompt every turn. Scripts are
+  files in `cfg.scripts_dir` with a `# --- vola-script ---` metadata block; `INDEX.md` is
+  regenerated from them and must never be hand-edited.
 - Loop guards: round limit (`max_rounds`, default 8), consecutive tool-error limit (default 3),
   and the same tool call repeated twice is rejected as a loop.
 - `run_cmd` blocks dangerous commands unless `VOLA_AGENT_ALLOW_DANGEROUS=1`; output is truncated
@@ -179,6 +184,9 @@ the `load_from` mapping and defaults, `config.json`, `README.md`, and a parsing/
   (`name`, `description`, `tags`); `skill_save` does this automatically. `SKILL.md` is the
   conventions page, not a domain skill. Files are the source of truth; the DB index is rebuilt
   at startup.
+- New script: `script_save` writes `<name>.<ext>` into `cfg.scripts_dir` with a generated
+  `# --- vola-script ---` header; `script_run` picks the interpreter from the extension. Keep
+  `INDEX.md` generated (`Scripts::write_index`), never hand-edited.
 - New memory or session field: update `vola-core/src/memory.rs` migrations, row structs and
   queries, plus callers in `agent.rs`, `vola-tui/src/repl.rs`, `vola-tui/src/cli.rs`,
   `server.rs` or `tools/mod.rs`.
@@ -197,7 +205,7 @@ the `load_from` mapping and defaults, `config.json`, `README.md`, and a parsing/
 - Exit code is non-zero on startup or runtime failure; errors are printed to stderr with an
   actionable message.
 - `vola-agent sessions` lists saved sessions; `vola-agent memory list|search|add` manages long-term
-  notes; `vola-agent skills` lists the skill library.
+  notes; `vola-agent skills` lists the skill library; `vola-agent scripts` lists the script library.
 - `vola-agent serve [--addr host:port]` exposes the GUI's WebSocket API (default
   `127.0.0.1:8765`, or `VOLA_AGENT_SERVE_ADDR`); `--port <n>` is shorthand for
   `127.0.0.1:<n>`.

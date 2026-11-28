@@ -74,10 +74,11 @@ its next safe point and still pairs every `tool_calls` message with a result.
 | ------------------ | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
 | System prompt      | `agent/SYSTEM.md` (change with `--prompt`/`VOLA_AGENT_PROMPT`); at runtime it is combined with environment facts, the skill index, pinned memories and a history summary                                                                                                                                                                                                                                      |
 | Compaction prompt  | `agent/MEMORY.md` (`--summarizer`/`VOLA_AGENT_SUMMARIZER`; read once at startup, falls back to the built-in default when missing or blank)                                                                                                                                                                                                                                                                    |
-| Tool calling       | Sends JSON Schemas for 10 tools to the model; parses `message.tool_calls`, and also accepts the XML `<tool_call>` fallback written into the content; normalizes argument names (`command`/`cmdline` → `cmd`)                                                                                                                                                                                                  |
+| Tool calling       | Sends JSON Schemas for 15 tools to the model; parses `message.tool_calls`, and also accepts the XML `<tool_call>` fallback written into the content; normalizes argument names (`command`/`cmdline` → `cmd`)                                                                                                                                                                                                  |
 | Command execution  | `run_cmd`: timeout (60s by default, per-call `timeout_secs`), non-zero exit codes are not fatal, long output is truncated from the head and tail, dangerous commands are blocklisted (`VOLA_AGENT_ALLOW_DANGEROUS=1` bypasses it)                                                                                                                                                                             |
 | File operations    | `read_file` / `write_file` / `list_dir`; paths resolve against the working directory                                                                                                                                                                                                                                                                                                                          |
 | Skills             | `agent/skills/SKILL.md` is the library manager page (conventions for adding, updating and retiring skills); the real skills live in `agent/skills/references/*.md` (YAML frontmatter) and are the source of truth, while the DB only indexes them and counts usage; `skill_list` / `skill_view` / `skill_save` let the model curate its own library (new skills are written into `references/` automatically) |
+| Scripts            | Executable files in the scripts directory (by default `scripts/` next to `SYSTEM.md`). Metadata lives in a `# --- vola-script ---` comment block; `INDEX.md` is generated from it. `script_list` / `script_view` / `script_save` / `script_delete` manage the library, and `script_run` picks the interpreter from the extension (`.py`, `.sh`, `.ps1`, `.js`, ...) and runs it with the same timeout/output handling as `run_cmd` |
 | Memory             | SQLite `agent/data/memory.db`: `messages` stores sessions, `notes` stores long-term memory (pinnable, pinned notes are injected into the system prompt on every turn), `summaries` stores compaction summaries, and `skills` stores the index                                                                                                                                                                 |
 | Context compaction | When the context exceeds `budget_chars` (default `num_ctx × 2` characters), earlier messages are folded into a ≤700-word summary written back to the DB; the cut point never splits an assistant/tool pair; `/compress` triggers it manually                                                                                                                                                                  |
 | Loop protection    | Round limit (default 8), consecutive tool-error limit (default 3), and the same call repeated twice is treated as a loop                                                                                                                                                                                                                                                                                      |
@@ -88,13 +89,13 @@ its next safe point and still pairs every `tool_calls` message with a result.
 vola-agent [chat]                       Interactive REPL (default)
 vola-agent ask "<question>"             One-shot question; process to stderr, answer to stdout
 vola-agent serve [--addr host:port]     WebSocket API for vola-gui (default 127.0.0.1:8765)
-vola-agent skills | memory list|search|add | models | sessions | tools
+vola-agent skills | scripts | memory list|search|add | models | sessions | tools
 vola-agent init                         Create config.json, asset/script/skill dirs and prompt skeletons
 ```
 
 `memory add <content> [--pin]`, `memory search <keyword>`, `memory list`.
 
-REPL slash commands: `/help` `/clear` `/cls` `/exit` `/new` `/sessions` `/resume` `/skills` `/skill <name>` `/model` `/models` `/ctx` `/compress` `/history [n]` `/note <fact>` `/notes [keyword]` `/memory list [keyword]` `/memory del <id>` `/tools` `/db` `/!<command>`.
+REPL slash commands: `/help` `/clear` `/cls` `/exit` `/new` `/sessions` `/resume` `/skills` `/skill <name>` `/scripts` `/model` `/models` `/ctx` `/compress` `/history [n]` `/note <fact>` `/notes [keyword]` `/memory list [keyword]` `/memory del <id>` `/tools` `/db` `/!<command>`.
 
 Ctrl+C: at the `you ›` prompt it quits; while the agent is working it cancels the current turn and returns to the prompt (a command the agent is running has its process tree killed). The cancelled model request is abandoned rather than written to the session.
 
@@ -107,7 +108,6 @@ The project-root `config.json` defines paths and the local LLM. It takes precede
 ```json
 {
   "assets": "agent/assets",
-  "scripts": "agent/scripts",
   "skills": "agent/skills",
   "system": "agent/SYSTEM.md",
   "memory": "agent/MEMORY.md",
@@ -152,7 +152,7 @@ The project-root `config.json` defines paths and the local LLM. It takes precede
 }
 ```
 
-`assets` / `scripts` / `skills` / `system` / `memory` / `database` accept relative or absolute paths (`system` / `memory` point at SYSTEM.md / MEMORY.md).
+`assets` / `scripts` / `skills` / `system` / `memory` / `database` accept relative or absolute paths (`system` / `memory` point at SYSTEM.md / MEMORY.md). When `scripts` is omitted, the library defaults to `scripts/` in the same directory as `system` (so `agent/scripts` for the default layout).
 
 `llm.default` selects the provider tag to use, and `llm.providers` lists `{ "tag", "type", "config" }` entries. Supported types:
 
@@ -195,6 +195,7 @@ vola-core/src/            the engine (library crate)
   memory.rs               SQLite sessions, messages, notes, summaries, skills
   prompt.rs               system prompt assembly and compaction prompt
   skills.rs               skill discovery and frontmatter parsing
+  scripts.rs              script library: metadata parsing, CRUD, index rendering
   tools/                  shell.rs / fsops.rs / mod.rs
   protocol.rs             GUI wire types
   server.rs               WebSocket server: one Agent per connection
@@ -211,6 +212,8 @@ agent/SYSTEM.md           system prompt
 agent/MEMORY.md           compaction prompt (formerly PROMPT_INIT.md)
 agent/skills/SKILL.md     skill library manager page
 agent/skills/references/  one Markdown file per skill
+agent/scripts/            reusable scripts (default: next to SYSTEM.md)
+agent/scripts/INDEX.md    generated script index (do not edit)
 agent/data/memory.db      sessions, notes, summaries, skill index
 ```
 
@@ -221,7 +224,7 @@ config.json                paths and LLM settings
 agent/SYSTEM.md            system prompt
 agent/MEMORY.md            compaction prompt (formerly PROMPT_INIT.md)
 agent/assets/              static assets
-agent/scripts/             reusable scripts
+agent/scripts/             reusable scripts (default: next to SYSTEM.md)
 agent/skills/SKILL.md      skill library manager page
 agent/skills/references/    one Markdown file per skill
 agent/data/memory.db       sessions, notes, summaries, skill index
