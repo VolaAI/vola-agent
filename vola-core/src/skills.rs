@@ -161,14 +161,9 @@ impl Skills {
             .iter()
             .map(|m| {
                 if m.description.is_empty() {
-                    format!("- **{}** (`{}`) ", m.name, m.path.display())
+                    format!("- **{}**", m.name)
                 } else {
-                    format!(
-                        "- **{}** — {} (`{}`) ",
-                        m.name,
-                        m.description,
-                        m.path.display()
-                    )
+                    format!("- **{}** — {}", m.name, m.description)
                 }
             })
             .collect::<Vec<_>>()

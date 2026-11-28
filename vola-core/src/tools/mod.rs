@@ -140,7 +140,7 @@ pub fn schemas() -> Vec<Value> {
             "type": "function",
             "function": {
                 "name": "script_list",
-                "description": "List the scripts in your script library (name, language, version, when to use, usage).",
+                "description": "List scripts (name, lang, version, when, usage).",
                 "parameters": {"type": "object", "properties": {}, "required": []}
             }
         }),
@@ -148,7 +148,7 @@ pub fn schemas() -> Vec<Value> {
             "type": "function",
             "function": {
                 "name": "script_view",
-                "description": "Read one script in full (metadata header + code). Check the script index before rewriting an existing script.",
+                "description": "Read a script (metadata + code). Check the index before rewriting.",
                 "parameters": {
                     "type": "object",
                     "properties": {"name": {"type": "string", "description": "script name or file name, e.g. pdf-split or pdf-split.py"}},
@@ -160,19 +160,19 @@ pub fn schemas() -> Vec<Value> {
             "type": "function",
             "function": {
                 "name": "script_save",
-                "description": "Create or update a reusable script. The metadata header is generated automatically. Follow the hard contract: --help, data on stdout, meaningful exit codes, no hardcoded paths, dry-run by default for destructive ops, non-interactive, deps listed. Verify it with one real run before claiming last_verified.",
+                "description": "Create/update a script; the metadata header is generated. Contract: --help, data on stdout, meaningful exit codes, no hardcoded paths, dry-run for destructive ops, non-interactive, deps listed. Verify with one real run before last_verified.",
                 "parameters": {
                     "type": "object",
                     "properties": {
-                        "name": {"type": "string", "description": "kebab-case name, optionally with extension (pdf-split or pdf-split.py)"},
-                        "lang": {"type": "string", "description": "python, bash, javascript, powershell, ... (optional if the name has an extension)"},
-                        "when": {"type": "string", "description": "one sentence: when to use this script"},
-                        "body": {"type": "string", "description": "the script source (without the metadata header)"},
-                        "deps": {"type": "string", "description": "comma-separated dependencies (optional)"},
-                        "usage": {"type": "string", "description": "usage line, e.g. pdf-split.py <input.pdf> --pages 1-10 (optional)"},
-                        "version": {"type": "string", "description": "version (optional; auto-increments on update)"},
-                        "last_verified": {"type": "string", "description": "YYYY-MM-DD of the last real run (optional)"},
-                        "status": {"type": "string", "description": "e.g. unverified or broken: reason (optional)"},
+                        "name": {"type": "string", "description": "kebab-case, optional extension (pdf-split or pdf-split.py)"},
+                        "lang": {"type": "string", "description": "python, bash, js, powershell, ... (optional if name has an extension)"},
+                        "when": {"type": "string", "description": "one sentence: when to use it"},
+                        "body": {"type": "string", "description": "script source (no metadata header)"},
+                        "deps": {"type": "string", "description": "comma-separated deps (optional)"},
+                        "usage": {"type": "string", "description": "usage line, e.g. pdf-split.py <in> --pages 1-10 (optional)"},
+                        "version": {"type": "string", "description": "version (optional; auto-bumps on update)"},
+                        "last_verified": {"type": "string", "description": "YYYY-MM-DD of last real run (optional)"},
+                        "status": {"type": "string", "description": "unverified | broken: reason (optional)"},
                         "platform": {"type": "string", "description": "e.g. win32 if only verified there (optional)"}
                     },
                     "required": ["name", "when", "body"]
@@ -183,7 +183,7 @@ pub fn schemas() -> Vec<Value> {
             "type": "function",
             "function": {
                 "name": "script_delete",
-                "description": "Delete a script from the library by name.",
+                "description": "Delete a script by name.",
                 "parameters": {
                     "type": "object",
                     "properties": {"name": {"type": "string"}},
@@ -195,14 +195,14 @@ pub fn schemas() -> Vec<Value> {
             "type": "function",
             "function": {
                 "name": "script_run",
-                "description": "Run a script from the library with arguments. Picks the interpreter from the script's language/extension. Returns stdout/stderr/exit code like run_cmd.",
+                "description": "Run a library script with args; picks the interpreter from the extension. Returns stdout/stderr/exit code.",
                 "parameters": {
                     "type": "object",
                     "properties": {
                         "name": {"type": "string", "description": "script name or file name"},
-                        "args": {"type": "string", "description": "arguments passed to the script (optional)"},
-                        "timeout_secs": {"type": "integer", "description": "timeout in seconds, 1-600, default 60"},
-                        "cwd": {"type": "string", "description": "optional working directory"}
+                        "args": {"type": "string", "description": "arguments (optional)"},
+                        "timeout_secs": {"type": "integer", "description": "seconds, 1-600, default 60"},
+                        "cwd": {"type": "string", "description": "working directory (optional)"}
                     },
                     "required": ["name"]
                 }
@@ -554,40 +554,37 @@ fn dispatch(env: &mut ToolEnv, name: &str, args: &Value) -> Result<String> {
         "script_list" => {
             let metas = env.scripts.discover();
             let mut s = format!(
-                "[script library] {} scripts (directory {})\n",
+                "[scripts] {} in {}\n",
                 metas.len(),
                 env.scripts.dir().display()
             );
             if metas.is_empty() {
-                s.push_str("(no scripts yet. Use script_save to capture one.)\n");
+                s.push_str("(none; use script_save after a reusable task)\n");
             }
             for m in &metas {
-                s.push_str(&format!(
-                    "- {} ({}) v{} — {} [{}]\n  usage: {}\n  file: {}\n",
-                    m.name,
-                    if m.lang.is_empty() {
-                        "?"
-                    } else {
-                        m.lang.as_str()
-                    },
-                    if m.version.is_empty() {
-                        "?"
-                    } else {
-                        m.version.as_str()
-                    },
-                    m.when,
-                    if m.status.is_empty() {
-                        "ok"
-                    } else {
-                        m.status.as_str()
-                    },
-                    if m.usage.is_empty() {
-                        "(none)"
-                    } else {
-                        m.usage.as_str()
-                    },
-                    m.path.display()
-                ));
+                let mut line = format!("- {}", m.name);
+                let mut tags = Vec::new();
+                if !m.lang.is_empty() {
+                    tags.push(m.lang.clone());
+                }
+                if !m.version.is_empty() {
+                    tags.push(format!("v{}", m.version));
+                }
+                if !tags.is_empty() {
+                    line.push_str(&format!(" ({})", tags.join(" ")));
+                }
+                if !m.when.is_empty() {
+                    line.push_str(&format!(" — {}", m.when));
+                }
+                if !m.status.is_empty() {
+                    line.push_str(&format!(" [{}]", m.status));
+                }
+                if !m.usage.is_empty() {
+                    line.push_str(&format!("; usage: {}", m.usage));
+                }
+                line.push_str(&format!("; file: {}", m.path.display()));
+                s.push_str(&line);
+                s.push('\n');
             }
             Ok(s)
         }
@@ -597,18 +594,8 @@ fn dispatch(env: &mut ToolEnv, name: &str, args: &Value) -> Result<String> {
                 Some((meta, text)) => {
                     let (text, cut) = truncate_middle(&text, env.cfg.output_limit);
                     Ok(format!(
-                        "[script] {} ({}) v{}\n\n{}{}",
+                        "[script] {}\n\n{}{}",
                         meta.name,
-                        if meta.when.is_empty() {
-                            "no description"
-                        } else {
-                            meta.when.as_str()
-                        },
-                        if meta.version.is_empty() {
-                            "?"
-                        } else {
-                            meta.version.as_str()
-                        },
                         text,
                         if cut { "\n[truncated]" } else { "" }
                     ))
@@ -659,14 +646,20 @@ fn dispatch(env: &mut ToolEnv, name: &str, args: &Value) -> Result<String> {
             let (meta, existed) = env.scripts.save(&spec)?;
             env.scripts.write_index()?;
             Ok(format!(
-                "[script {}] {} -> {}\n[when] {}\n[lang] {}\n[version] {}\n[body {} chars]",
+                "[script {}] {} ({} v{}) -> {}",
                 if existed { "updated" } else { "created" },
                 meta.name,
-                meta.path.display(),
-                meta.when,
-                meta.lang,
-                meta.version,
-                body.chars().count()
+                if meta.lang.is_empty() {
+                    "?"
+                } else {
+                    meta.lang.as_str()
+                },
+                if meta.version.is_empty() {
+                    "?"
+                } else {
+                    meta.version.as_str()
+                },
+                meta.path.display()
             ))
         }
         "script_delete" => {

@@ -325,21 +325,24 @@ impl Scripts {
         Ok(true)
     }
 
-    /// Render the script index injected into the system prompt.
+    /// Render the compact script index injected into the system prompt.
     pub fn render_index(&self, metas: &[ScriptMeta]) -> String {
         if metas.is_empty() {
-            return "- (no scripts yet. After a reusable task, capture one with script_save.)"
-                .to_string();
+            return "- (none; use script_save after a reusable task)".to_string();
         }
         metas
             .iter()
             .map(|m| {
-                let mut line = format!("- **{}**", m.name);
+                let mut line = format!("- {}", m.name);
+                let mut tags = Vec::new();
                 if !m.lang.is_empty() {
-                    line.push_str(&format!(" ({})", m.lang));
+                    tags.push(m.lang.clone());
                 }
                 if !m.version.is_empty() {
-                    line.push_str(&format!(" v{}", m.version));
+                    tags.push(format!("v{}", m.version));
+                }
+                if !tags.is_empty() {
+                    line.push_str(&format!(" ({})", tags.join(" ")));
                 }
                 if !m.when.is_empty() {
                     line.push_str(&format!(" — {}", m.when));
@@ -348,7 +351,7 @@ impl Scripts {
                     line.push_str(&format!(" [{}]", m.status));
                 }
                 if !m.usage.is_empty() {
-                    line.push_str(&format!("\n  usage: {}", m.usage));
+                    line.push_str(&format!("; usage: {}", m.usage));
                 }
                 line
             })
@@ -360,7 +363,7 @@ impl Scripts {
     pub fn write_index(&self) -> Result<()> {
         let metas = self.discover();
         let content = format!(
-            "# Script index (generated — do not edit by hand)\n\n{}\n",
+            "# Scripts (generated; do not edit)\n\n{}\n",
             self.render_index(&metas)
         );
         let path = self.dir.join("INDEX.md");

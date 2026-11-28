@@ -1,4 +1,4 @@
-//! System prompt assembly: agent/SYSTEM.md body + environment facts + skill index + pinned notes + history summary.
+//! System prompt assembly: SYSTEM.md + runtime facts + skill/script indexes + pinned notes + history summary.
 
 use anyhow::{Context, Result};
 use std::fs;
@@ -9,9 +9,9 @@ use crate::util::{fmt_time, now_secs};
 
 /// Compressor prompt shipped with the binary. Used when agent/MEMORY.md is missing or blank,
 /// so the agent keeps working in a fresh checkout without a prompt file.
-const DEFAULT_SUMMARIZER: &str = "You are a conversation compressor. Condense the given conversation history into a summary of at most 700 words, written in the language the conversation used.\
-Keep: the user's goals and constraints; confirmed facts (paths, versions, numbers, environment); the key commands executed and their results; unfinished items and next steps.\
-No pleasantries, no invented details; mark anything uncertain as 'unconfirmed'. Output only the summary body.";
+const DEFAULT_SUMMARIZER: &str = "You are a conversation compressor. Condense the supplied history into at most 700 words, in the language the conversation used.\
+Preserve: the user's goals and constraints; confirmed facts (paths, versions, numbers, environment); key commands and their results; unfinished items and the next step.\
+No pleasantries, no invention. Mark uncertain items \"unverified\". Output only the summary body.";
 
 pub fn load_agent_md(cfg: &Config) -> Result<String> {
     fs::read_to_string(&cfg.prompt_path).with_context(|| {
@@ -65,19 +65,18 @@ pub fn build(
     pinned: &[NoteRow],
     summary: Option<&str>,
     session_id: i64,
-    ctx_chars: usize,
 ) -> String {
     let mut s = String::new();
     s.push_str(agent_md.trim());
     s.push_str("\n\n---\n\n## Runtime environment\n");
     s.push_str(&format!(
-        "- Current time: {} (UTC{})\n",
+        "- Time: {} (UTC{})\n",
         fmt_time(now_secs()),
-        offset_str(cfg)
+        offset_str()
     ));
-    s.push_str(&format!("- Working directory: {}\n", cfg.home.display()));
+    s.push_str(&format!("- Workdir: {}\n", cfg.home.display()));
     s.push_str(&format!(
-        "- Platform: {} / {} / shell={}\n",
+        "- Platform: {}/{}, shell={}\n",
         std::env::consts::OS,
         std::env::consts::ARCH,
         match cfg.shell {
@@ -87,45 +86,42 @@ pub fn build(
         }
     ));
     s.push_str(&format!(
-        "- Model: {} (num_ctx={}, temperature={})\n",
+        "- Model: {} (num_ctx={}, temp={})\n",
         cfg.model, cfg.num_ctx, cfg.temperature
     ));
     s.push_str(&format!(
-        "- Context budget: about {} chars (current system prompt {} chars); history is auto-compacted when this is exceeded\n",
-        cfg.budget_chars, ctx_chars
+        "- Context budget: ~{} chars; auto-compacts beyond it\n",
+        cfg.budget_chars
     ));
     s.push_str(&format!(
-        "- Session: #{}, database: {}\n",
+        "- Session: #{}, DB: {}\n",
         session_id,
         cfg.db_path.display()
     ));
     s.push_str(&format!(
-        "- Skill directory: {} (managed with the skill_* tools)\n",
+        "- Skills: {} (skill_* tools)\n",
         cfg.skills_dir.display()
     ));
     s.push_str(&format!(
-        "- Assets directory: {} (static resources and reference data)\n",
-        cfg.assets_dir.display()
-    ));
-    s.push_str(&format!(
-        "- Scripts directory: {} (reusable automation scripts; run them with run_cmd)\n",
+        "- Scripts: {} (script_* tools)\n",
         cfg.scripts_dir.display()
     ));
+    s.push_str(&format!("- Assets: {}\n", cfg.assets_dir.display()));
     s.push_str(&format!(
-        "- Command timeout: {}s by default (at most 600s per command); output cap: {} chars\n",
+        "- Limits: cmd timeout {}s (max 600), output cap {} chars\n",
         cfg.cmd_timeout_secs, cfg.output_limit
     ));
 
-    s.push_str("\n## Skills you already have (SKILL index)\n");
+    s.push_str("\n## Skills\n");
     s.push_str(skills_index);
-    s.push_str("\n\n(Before a related task, read the steps with skill_view; after finishing, capture any new reusable approach with skill_save.)\n");
+    s.push_str("\n\n(Use skill_view before a related task; skill_save after a reusable one.)\n");
 
-    s.push_str("\n## Scripts you already have (SCRIPT index)\n");
+    s.push_str("\n## Scripts\n");
     s.push_str(scripts_index);
-    s.push_str("\n\n(Before writing a new script, check this index and run an existing one with script_run; after a reusable task, capture it with script_save.)\n");
+    s.push_str("\n\n(Use script_run to run one; script_save after a reusable one.)\n");
 
     if !pinned.is_empty() {
-        s.push_str("\n## Pinned long-term memory (injected every time)\n");
+        s.push_str("\n## Pinned memory\n");
         for n in pinned {
             s.push_str(&format!(
                 "- {}{}\n",
@@ -137,12 +133,12 @@ pub fn build(
                 n.content.trim()
             ));
         }
-        s.push_str("(Use memory_search for memories that are not pinned.)\n");
+        s.push_str("(Use memory_search for the rest.)\n");
     }
 
     if let Some(sum) = summary {
         if !sum.trim().is_empty() {
-            s.push_str("\n## Compacted summary of earlier conversation (older messages have been folded in)\n");
+            s.push_str("\n## Earlier conversation summary\n");
             s.push_str(sum.trim());
             s.push('\n');
         }
@@ -151,8 +147,7 @@ pub fn build(
     s
 }
 
-fn offset_str(cfg: &Config) -> String {
-    let _ = cfg;
+fn offset_str() -> String {
     match std::env::var("VOLA_AGENT_UTC_OFFSET")
         .ok()
         .and_then(|v| v.parse::<i32>().ok())

@@ -1,3 +1,3 @@
-# Script index (generated — do not edit by hand)
+# Scripts (generated; do not edit)
 
-- (no scripts yet. After a reusable task, capture one with script_save.)
+- (none; use script_save after a reusable task)

@@ -648,7 +648,6 @@ impl Agent {
                         Some(&summary_text)
                     },
                     self.session_id,
-                    sys_len + msgs_len,
                 );
                 let mut out = vec![Message::system(full)];
                 out.extend(msgs.iter().map(|(_, m)| m.clone()));
