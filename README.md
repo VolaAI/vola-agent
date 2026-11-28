@@ -51,10 +51,10 @@ Start the core first, either from a terminal (`vola-agent serve`) or with the GU
 **Settings → Stop core** stops a server the GUI started.
 
 The GUI supports chat with live tool cards and token/context progress, cancel/stop,
-sessions (new, resume, delete, history), model switching and listing, model-provider errors,
-compaction, the skill library, long-term memory, the tool list, and the same slash commands as
-the TUI (`/help`, `/model`, `/session`, `/skill`, `/script`, `/memory`, `/history`, `/reload`).
-Tab completes commands and subcommands.
+sessions (new, resume, delete with a confirmation dialog, history), model switching and listing,
+model-provider errors, compaction, the skill library, long-term memory, the tool list, and the
+same slash commands as the TUI (`/help`, `/model`, `/session`, `/skill`, `/script`, `/memory`,
+`/history`, `/reload`). Tab completes commands and subcommands.
 
 ### WebSocket protocol
 
@@ -99,7 +99,10 @@ vola-agent init                         Create config.json, asset/script/skill d
 
 REPL slash commands (shared with the GUI): `/help` `/model [name|list]` `/session [new|resume <id>|delete <id>]` `/skill [view <name>|delete <name>]` `/script [view <name>|delete <name>]` `/memory [add <text> [--pin]|delete <id>|search <q>]` `/history [n]` `/reload` `/compress` `/ctx` `/tools` `/db` `/!<command>` `/clear` `/exit`.
 
-Tab completes command names and subcommands. The GUI expands the completion immediately; the TUI reads lines in the terminal's line mode, so type the prefix, press Tab, then Enter to expand it.
+Tab completes command names and subcommands. The GUI expands the completion immediately on Tab;
+the TUI reads lines in the terminal's line mode, so type the prefix, press Tab, then Enter to
+expand it. A bare command name that has exactly one completion also expands on Enter (so `/he`
+becomes `/help` even where the terminal does not deliver Tab).
 
 Ctrl+C: at the `you ›` prompt it quits; while the agent is working it cancels the current turn and returns to the prompt (a command the agent is running has its process tree killed). The cancelled model request is abandoned rather than written to the session.
 

@@ -158,10 +158,13 @@ the `load_from` mapping and defaults, `config.json`, `README.md`, and a parsing/
   text plus `quit`/`clear`/`reloaded`/`session_changed` flags; the server maps them to
   `command_result` and an optional `session` message.
 - Command completion is `commands::complete` (command names and subcommands). The GUI sends
-  `complete` and applies `completions` on Tab; the TUI expands a Tab when the line is submitted.
-- Session deletion removes the session row plus its messages and summaries; deleting the
-  active session creates a fresh one. The GUI exposes it per session and via
-  `delete_session`; the TUI uses `/session delete <id>`.
+  `complete` and applies `completions` on Tab (the capture rule sits on the view around the
+  `Input`, since a native input owns its own keys); the TUI expands a Tab when the line is
+  submitted, and also expands a bare command name with exactly one completion on Enter.
+- Session deletion removes the session row plus its messages and summaries. Deleting the active
+  session switches to the most recent remaining session, or creates a fresh one when none are
+  left, so deleting the first (active) session visibly removes it. The GUI asks for confirmation
+  and exposes it per session and via `delete_session`; the TUI uses `/session delete <id>`.
 - Loop guards: round limit (`max_rounds`, default 8), consecutive tool-error limit (default 3),
   and the same tool call repeated twice is rejected as a loop.
 - `run_cmd` blocks dangerous commands unless `VOLA_AGENT_ALLOW_DANGEROUS=1`; output is truncated

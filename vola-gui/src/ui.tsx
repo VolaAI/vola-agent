@@ -467,16 +467,23 @@ function Composer() {
         <Text class="text-xs text-red-500">{agentError() ?? ""}</Text>
       </If>
       <View class="flex-row items-end gap-2">
-        <View class="flex-1" style={{ minWidth: 0 }}>
+        {/* The capture rule lives on the view around the input: a native
+            Input owns its own keys, so `captureKeys` on the input itself is
+            ignored and Tab would move the focus. On an ancestor it consumes
+            Tab before the default traversal, and `onKeyDown` bubbles up. */}
+        <View
+          class="flex-1"
+          style={{ minWidth: 0 }}
+          captureKeys={["tab"]}
+          onKeyDown={(event) => {
+            if (event.key === "Tab") completeDraft();
+          }}
+        >
           <Input
             multiline
             value={draft()}
             placeholder="Ask vola… or type /help  (Enter sends, Shift+Enter adds a line)"
             submitBehavior="submit"
-            captureKeys={["tab"]}
-            onKeyDown={(event) => {
-              if (event.key === "Tab") completeDraft();
-            }}
             onChange={(event) => draft.set(event.value)}
             onSubmit={() => sendChat()}
             class="rounded-lg border border-border bg-card px-3 py-2 text-sm"

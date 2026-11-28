@@ -252,9 +252,16 @@ fn session_cmd(agent: &mut Agent, rest: &str) -> Result<CommandOutput> {
             let mut text = format!("deleted session #{}", id);
             let mut session_changed = false;
             if agent.session_id == id {
-                let new_id = agent.store.new_session("", &agent.cfg.model)?;
+                // Prefer the most recent remaining session so deleting the active
+                // (often the first) session visibly removes it; create a fresh one
+                // only when none are left.
+                let next = agent.store.sessions(1)?.into_iter().next().map(|s| s.id);
+                let new_id = match next {
+                    Some(next_id) => next_id,
+                    None => agent.store.new_session("", &agent.cfg.model)?,
+                };
                 agent.session_id = new_id;
-                text.push_str(&format!("; switched to new session #{}", new_id));
+                text.push_str(&format!("; switched to session #{}", new_id));
                 session_changed = true;
             }
             Ok(CommandOutput {

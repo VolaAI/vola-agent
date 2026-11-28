@@ -34,7 +34,7 @@ pub fn run(mut agent: Agent) -> Result<()> {
         let input = if raw.contains('\t') {
             expand_tabs(raw)
         } else {
-            raw.trim().to_string()
+            complete_unique(raw.trim())
         };
         if input.is_empty() {
             continue;
@@ -297,6 +297,23 @@ fn expand_tabs(line: &str) -> String {
     }
 }
 
+/// Complete a bare command name to its only candidate (`/he` → `/help`), so a
+/// terminal that does not deliver Tab still completes on Enter. Ambiguous
+/// prefixes, lines with arguments and one-letter prefixes (where `/e` would
+/// become `/exit`) are left as typed.
+fn complete_unique(line: &str) -> String {
+    if !line.starts_with('/') || line.contains(char::is_whitespace) {
+        return line.to_string();
+    }
+    if line.chars().count() < 3 {
+        return line.to_string();
+    }
+    match commands::complete(line).as_slice() {
+        [one] => one.clone(),
+        _ => line.to_string(),
+    }
+}
+
 fn banner(agent: &Agent) {
     let cfg = &agent.cfg;
     let skills = agent.skills.discover().len();
@@ -342,5 +359,17 @@ mod tests {
         };
         let line = status_line(&fresh, "/", 0.0);
         assert!(line.contains("tok est~256"), "{}", line);
+    }
+
+    #[test]
+    fn completes_a_unique_command_prefix_on_submit() {
+        assert_eq!(complete_unique("/he"), "/help");
+        assert_eq!(complete_unique("/ex"), "/exit");
+        // Ambiguous, one-letter, argument lines and plain text stay as typed.
+        assert_eq!(complete_unique("/s"), "/s");
+        assert_eq!(complete_unique("/e"), "/e");
+        assert_eq!(complete_unique("/session d"), "/session d");
+        assert_eq!(complete_unique("hello"), "hello");
+        assert_eq!(complete_unique("/help"), "/help");
     }
 }

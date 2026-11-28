@@ -1,6 +1,7 @@
 // The GUI's state: one shared WebSocket to `vola-core`, signals the UI reads.
 
 import { computed, signal } from "nsh";
+import { AlertDialog } from "nsh/base";
 import type {
   ClientMessage,
   ConfigView,
@@ -564,8 +565,19 @@ function longestCommonPrefix(values: string[]): string {
   return prefix;
 }
 
-export function deleteSession(id: number) {
-  send({ type: "delete_session", session_id: id });
+export async function deleteSession(id: number) {
+  const { action } = await AlertDialog.show({
+    title: "Delete this session?",
+    description:
+      "Its messages and summaries are removed. This cannot be undone.",
+    actions: [
+      { label: "Cancel", role: "cancel", id: "cancel" },
+      { label: "Delete", role: "destructive", id: "delete" },
+    ],
+  });
+  if (action === "delete") {
+    send({ type: "delete_session", session_id: id });
+  }
 }
 
 export function cancelTurn() {

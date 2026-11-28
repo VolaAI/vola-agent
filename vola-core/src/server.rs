@@ -408,8 +408,16 @@ fn handle_request(state: &mut ConnState, request: ClientMessage) -> Result<Vec<S
                 removed,
             }];
             if removed && state.session_id == Some(session_id) {
-                let model = current_model(state);
-                let id = with_store(state, |store| store.new_session("", &model))?;
+                // Switch to the most recent remaining session so deleting the active
+                // (often the first) session visibly removes it; only create a fresh one
+                // when none are left.
+                let remaining = with_store(state, |store| store.sessions(1))?;
+                let id = if let Some(row) = remaining.into_iter().next() {
+                    row.id
+                } else {
+                    let model = current_model(state);
+                    with_store(state, |store| store.new_session("", &model))?
+                };
                 state.session_id = Some(id);
                 if let Some(agent) = state.agent.as_mut() {
                     agent.session_id = id;
@@ -664,7 +672,7 @@ mod tests {
             .iter()
             .any(|c| c == "/session"));
 
-        // Deleting the active session replies with `session_deleted` and a fresh session.
+        // Deleting the active session replies with `session_deleted` and a session to switch to.
         ws.send(&format!(
             r#"{{"type":"delete_session","session_id":{}}}"#,
             session_id
