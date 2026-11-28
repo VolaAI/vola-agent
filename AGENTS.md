@@ -8,7 +8,9 @@ Guidance for coding agents working in this repository.
 OpenAI-compatible `/v1/chat/completions` tools protocol, executes commands on the host, reads and writes files, curates its
 own skill library, and keeps sessions plus long-term memory in SQLite.
 
-- Binary crate, Rust 2021, single binary `vola-agent`.
+- Rust 2021 workspace producing a single binary `vola-agent` (root package).
+- `vola-core` holds the engine; `vola-tui` holds the terminal front-end (argv parsing,
+  subcommands, REPL, console setup); the root `src/main.rs` is a thin launcher.
 - Dependencies: `anyhow`, `serde`/`serde_json`, `ureq` (blocking HTTP with rustls), `rusqlite`
   (bundled SQLite).
 - No async runtime; all HTTP and tool work is synchronous.
@@ -16,13 +18,15 @@ own skill library, and keeps sessions plus long-term memory in SQLite.
 ## Repository layout
 
 ```
-Cargo.toml / Cargo.lock   Cargo workspace: `vola-agent` (root package) + `vola-core`
+Cargo.toml / Cargo.lock   Cargo workspace: `vola-agent` (root package) + `vola-core` + `vola-tui`
 config.json               paths, database and local LLM settings (source of truth)
 README.md                 user-facing documentation
 COMMIT_RULES.md           Conventional Commits 1.0.0; required for every commit
-src/main.rs               argv parsing, subcommands (serve), memory CLI, project init
-src/repl.rs               interactive REPL and slash commands, Ctrl+C routing
-src/console.rs            Windows console UTF-8 setup (set/restore the code page)
+src/main.rs               thin binary entry point; delegates to `vola_tui::main`
+vola-tui/src/lib.rs       terminal front-end entry (`main`) and module wiring
+vola-tui/src/cli.rs       argv parsing, subcommands (serve), memory CLI, project init
+vola-tui/src/repl.rs      interactive REPL and slash commands, Ctrl+C routing
+vola-tui/src/console.rs   Windows console UTF-8 setup (set/restore the code page)
 vola-core/src/lib.rs      public modules of the engine crate
 vola-core/src/agent.rs    agent loop: budget, compaction, dispatch, guards, TurnEvent
 vola-core/src/config.rs  config.json + env + CLI precedence, path resolution, shell detection
@@ -66,7 +70,7 @@ agent/data/memory.db      SQLite database (gitignored, created on demand)
 
 ```shell
 cargo build --release
-cargo test
+cargo test --workspace
 ```
 
 On Windows, load the MSVC environment first (`vcvars64.bat`, or the recipe in
@@ -90,8 +94,8 @@ nsh test vola-gui                  # headless UI tests
 ./target/release/vola-agent sessions | tools | init
 ```
 
-Keep the tree warning-free: `cargo check --all-targets` and `cargo test` must report no
-warnings or errors. Do not silence warnings with blanket `#[allow(dead_code)]`; either use the
+Keep the tree warning-free: `cargo check --all-targets` and `cargo test --workspace` must report
+no warnings or errors. Do not silence warnings with blanket `#[allow(dead_code)]`; either use the
 value or delete the dead code.
 
 ## Configuration model
@@ -176,7 +180,8 @@ the `load_from` mapping and defaults, `config.json`, `README.md`, and a parsing/
   conventions page, not a domain skill. Files are the source of truth; the DB index is rebuilt
   at startup.
 - New memory or session field: update `vola-core/src/memory.rs` migrations, row structs and
-  queries, plus callers in `agent.rs`, `repl.rs`, `main.rs`, `server.rs` or `tools/mod.rs`.
+  queries, plus callers in `agent.rs`, `vola-tui/src/repl.rs`, `vola-tui/src/cli.rs`,
+  `server.rs` or `tools/mod.rs`.
 - New GUI request: add the variant to `ClientMessage` in `vola-core/src/protocol.rs`, handle it in
   `server.rs`, add a `ServerMessage` reply if needed, mirror both in `vola-gui/src/protocol.ts`,
   handle the reply in `vola-gui/src/store.ts`, and surface it in `vola-gui/src/ui.tsx`.

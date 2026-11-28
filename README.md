@@ -2,10 +2,11 @@
 
 An Agent written in Rust: it speaks the OpenAI-compatible `/v1/chat/completions` tools protocol (served locally by Ollama), actually runs commands on this machine, reads and writes files, maintains its own skills, and stores sessions and long-term memory in SQLite.
 
-The workspace has three parts:
+The workspace has four parts:
 
 - `vola-core` — the engine (LLM clients, SQLite memory, skills, tools) plus a WebSocket API.
-- `vola-agent` — the command-line client: REPL, one-shot `ask`, `serve` and maintenance commands.
+- `vola-tui` — the terminal front-end: argv parsing, subcommands, the interactive REPL, one-shot `ask`, `serve` and maintenance commands.
+- `vola-agent` — the thin binary that launches `vola-tui`.
 - `vola-gui` — a native desktop GUI: TSX rendered by [nsh](https://nsh.dev/), talking to `vola-core` over WebSocket.
 
 ## Quick start
@@ -178,10 +179,12 @@ Environment variables (effective only when `config.json` does not set the key): 
 ## Layout
 
 ```
-Cargo.toml                Cargo workspace (`vola-agent` + `vola-core`)
+Cargo.toml                Cargo workspace (`vola-agent` + `vola-core` + `vola-tui`)
 config.json               paths and local LLM settings
-src/                      the CLI binary
-  main.rs                 argv parsing, subcommands, memory CLI, init
+src/main.rs               thin binary entry point; delegates to `vola_tui::main`
+vola-tui/src/             the terminal front-end (library crate)
+  lib.rs                  entry point and module wiring
+  cli.rs                  argv parsing, subcommands, memory CLI, init
   repl.rs                 interactive loop, slash commands, Ctrl+C routing
   console.rs              Windows console UTF-8 setup
 vola-core/src/            the engine (library crate)
