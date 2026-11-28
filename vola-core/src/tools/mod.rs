@@ -91,7 +91,7 @@ pub fn schemas() -> Vec<Value> {
             "type": "function",
             "function": {
                 "name": "skill_list",
-                "description": "List all the skills you have (name/description/recent use count).",
+                "description": "List all the skills you have (name/description/recent use count). Query this before adding, changing or deleting a skill.",
                 "parameters": {"type": "object", "properties": {}, "required": []}
             }
         }),
@@ -111,7 +111,7 @@ pub fn schemas() -> Vec<Value> {
             "type": "function",
             "function": {
                 "name": "skill_save",
-                "description": "Capture a reusable approach as a skill (Markdown). A skill with the same name is overwritten. After finishing a task, capture it proactively: commands, paths, pitfalls, how to verify.",
+                "description": "Create or update a skill (Markdown). A skill with the same name is overwritten, so skill_view it first when refactoring. Only save reusable, verified knowledge; after finishing a task, capture it proactively: commands, paths, pitfalls, how to verify.",
                 "parameters": {
                     "type": "object",
                     "properties": {
@@ -121,6 +121,18 @@ pub fn schemas() -> Vec<Value> {
                         "body": {"type": "string", "description": "skill body: when it applies, steps, commands, cautions"}
                     },
                     "required": ["name", "description", "body"]
+                }
+            }
+        }),
+        json!({
+            "type": "function",
+            "function": {
+                "name": "skill_delete",
+                "description": "Delete a skill that is obsolete, wrong or superseded. Check skill_list first and never delete a skill that is still referenced. The library manager page (SKILL.md) is protected.",
+                "parameters": {
+                    "type": "object",
+                    "properties": {"name": {"type": "string", "description": "skill name (slug)"}},
+                    "required": ["name"]
                 }
             }
         }),
@@ -252,6 +264,7 @@ pub fn names() -> Vec<&'static str> {
         "skill_list",
         "skill_view",
         "skill_save",
+        "skill_delete",
         "script_list",
         "script_view",
         "script_save",
@@ -511,6 +524,32 @@ fn dispatch(env: &mut ToolEnv, name: &str, args: &Value) -> Result<String> {
                 meta.description,
                 body.chars().count()
             ))
+        }
+        "skill_delete" => {
+            let name = require(args, &["name", "skill", "skill_name"], "skill_delete")?;
+            match env.skills.delete(&name)? {
+                Some(meta) => {
+                    env.store.delete_skill(&meta.name)?;
+                    Ok(format!(
+                        "[skill deleted] {} ({})\n[note] the file was removed and the index row dropped; update any skill that referenced it.",
+                        meta.name,
+                        meta.path.display()
+                    ))
+                }
+                None => {
+                    let available: Vec<String> =
+                        env.skills.discover().into_iter().map(|m| m.name).collect();
+                    Ok(format!(
+                        "[no skill `{}`] available: {}",
+                        name,
+                        if available.is_empty() {
+                            "none".to_string()
+                        } else {
+                            available.join(", ")
+                        }
+                    ))
+                }
+            }
         }
         "script_list" => {
             let metas = env.scripts.discover();

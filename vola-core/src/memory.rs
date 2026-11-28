@@ -393,6 +393,13 @@ impl MemoryStore {
         Ok(())
     }
 
+    pub fn delete_skill(&mut self, name: &str) -> Result<bool> {
+        Ok(self
+            .conn
+            .execute("DELETE FROM skills WHERE name = ?1", params![name])?
+            > 0)
+    }
+
     pub fn skills(&self) -> Result<Vec<SkillRow>> {
         let mut stmt = self.conn.prepare(
             "SELECT name, description, path, use_count, updated_at FROM skills
@@ -573,6 +580,9 @@ mod tests {
             "Build a Rust project (new description)"
         );
         assert_eq!(skills[0].use_count, 1);
+        assert!(store.delete_skill("rust-build").unwrap());
+        assert!(store.skills().unwrap().is_empty());
+        assert!(!store.delete_skill("rust-build").unwrap());
         let _ = std::fs::remove_file(path);
     }
 }

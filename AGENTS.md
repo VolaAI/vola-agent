@@ -148,6 +148,9 @@ the `load_from` mapping and defaults, `config.json`, `README.md`, and a parsing/
 - The skill and script indexes are injected into the system prompt every turn. Scripts are
   files in `cfg.scripts_dir` with a `# --- vola-script ---` metadata block; `INDEX.md` is
   regenerated from them and must never be hand-edited.
+- Skills are self-managed: `skill_list` / `skill_view` query, `skill_save` creates or rewrites
+  (same name = update), and `skill_delete` retires. Deleting removes the file and the DB row;
+  the manager page `SKILL.md` is protected.
 - Loop guards: round limit (`max_rounds`, default 8), consecutive tool-error limit (default 3),
   and the same tool call repeated twice is rejected as a loop.
 - `run_cmd` blocks dangerous commands unless `VOLA_AGENT_ALLOW_DANGEROUS=1`; output is truncated
@@ -181,9 +184,9 @@ the `load_from` mapping and defaults, `config.json`, `README.md`, and a parsing/
   `names()`, implement it in `dispatch()`, and use `arg_str`/`arg_usize`/`arg_bool` helpers with
   clear `[Tool error]` messages. Keep results compact; the model sees them verbatim.
 - New skill: put a Markdown file in `agent/skills/references/` with YAML frontmatter
-  (`name`, `description`, `tags`); `skill_save` does this automatically. `SKILL.md` is the
-  conventions page, not a domain skill. Files are the source of truth; the DB index is rebuilt
-  at startup.
+  (`name`, `description`, `tags`); `skill_save` does this automatically and overwrites by name.
+  `skill_delete` removes the file and its DB row; `SKILL.md` is the protected manager page, not a
+  domain skill. Files are the source of truth; the DB index is rebuilt at startup.
 - New script: `script_save` writes `<name>.<ext>` into `cfg.scripts_dir` with a generated
   `# --- vola-script ---` header; `script_run` picks the interpreter from the extension. Keep
   `INDEX.md` generated (`Scripts::write_index`), never hand-edited.
@@ -205,7 +208,8 @@ the `load_from` mapping and defaults, `config.json`, `README.md`, and a parsing/
 - Exit code is non-zero on startup or runtime failure; errors are printed to stderr with an
   actionable message.
 - `vola-agent sessions` lists saved sessions; `vola-agent memory list|search|add` manages long-term
-  notes; `vola-agent skills` lists the skill library; `vola-agent scripts` lists the script library.
+  notes; `vola-agent skills [delete <name>]` lists or deletes skills; `vola-agent scripts` lists the
+  script library.
 - `vola-agent serve [--addr host:port]` exposes the GUI's WebSocket API (default
   `127.0.0.1:8765`, or `VOLA_AGENT_SERVE_ADDR`); `--port <n>` is shorthand for
   `127.0.0.1:<n>`.

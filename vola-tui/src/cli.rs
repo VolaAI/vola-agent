@@ -168,23 +168,41 @@ pub(crate) fn run() -> Result<()> {
         }
         "skills" => {
             let skills = skills::Skills::new(cfg.skills_dir.clone());
-            let metas = skills.discover();
-            if metas.is_empty() {
-                println!("(skill directory is empty: {})", cfg.skills_dir.display());
-            }
-            for m in metas {
-                let tags = if m.tags.is_empty() {
-                    String::new()
-                } else {
-                    format!("[{}] ", m.tags)
-                };
-                println!(
-                    "{:<28} {}\n    {}{}",
-                    m.name,
-                    m.description,
-                    tags,
-                    m.path.display()
-                );
+            if matches!(
+                args.first().map(|s| s.as_str()),
+                Some("delete") | Some("del")
+            ) {
+                let name = args.get(1).cloned().unwrap_or_default();
+                if name.is_empty() {
+                    bail!("usage: vola-agent skills delete <name>");
+                }
+                match skills.delete(&name)? {
+                    Some(meta) => {
+                        let mut store = memory::MemoryStore::open(&cfg.db_path)?;
+                        store.delete_skill(&meta.name)?;
+                        println!("deleted skill {} ({})", meta.name, meta.path.display());
+                    }
+                    None => println!("no skill `{}`", name),
+                }
+            } else {
+                let metas = skills.discover();
+                if metas.is_empty() {
+                    println!("(skill directory is empty: {})", cfg.skills_dir.display());
+                }
+                for m in metas {
+                    let tags = if m.tags.is_empty() {
+                        String::new()
+                    } else {
+                        format!("[{}] ", m.tags)
+                    };
+                    println!(
+                        "{:<28} {}\n    {}{}",
+                        m.name,
+                        m.description,
+                        tags,
+                        m.path.display()
+                    );
+                }
             }
             Ok(())
         }
@@ -412,7 +430,7 @@ fn print_help() {
             "enter interactive mode (default command chat)",
         ),
         ("vola-agent ask \"<question>\"", "one-shot question"),
-        ("vola-agent skills", "list skills"),
+        ("vola-agent skills [delete <name>]", "list or delete skills"),
         ("vola-agent scripts", "list the script library"),
         (
             "vola-agent memory add <content> [--pin] | search <keyword> | delete <id> | list",

@@ -318,6 +318,7 @@ fn command(agent: &mut Agent, line: &str) -> Result<bool> {
                 ("/resume <id>", "resume a session"),
                 ("/skills", "list the skill library"),
                 ("/skill <name>", "show the full skill text"),
+                ("/skill delete <name>", "delete a skill"),
                 ("/scripts", "list the script library"),
                 ("/model [name]", "show/switch model"),
                 ("/models", "list Ollama models"),
@@ -395,8 +396,24 @@ fn command(agent: &mut Agent, line: &str) -> Result<bool> {
             }
         }
         "/skill" => {
-            if rest.is_empty() {
-                println!("usage: /skill <name>");
+            let (sub, arg) = match rest.split_once(char::is_whitespace) {
+                Some((s, a)) => (s, a.trim()),
+                None => (rest, ""),
+            };
+            if sub == "delete" || sub == "del" {
+                if arg.is_empty() {
+                    println!("usage: /skill delete <name>");
+                } else {
+                    match agent.skills.delete(arg)? {
+                        Some(meta) => {
+                            agent.store.delete_skill(&meta.name)?;
+                            println!("deleted skill {} ({})", meta.name, meta.path.display());
+                        }
+                        None => println!("no skill `{}`", arg),
+                    }
+                }
+            } else if rest.is_empty() {
+                println!("usage: /skill <name> | /skill delete <name>");
             } else {
                 match agent.skills.load(rest) {
                     Some((meta, body)) => {

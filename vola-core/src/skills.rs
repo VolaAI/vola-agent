@@ -90,6 +90,13 @@ impl Skills {
         body: &str,
     ) -> Result<(SkillMeta, bool)> {
         let slug = slugify(name);
+        if self.is_manager_name(&slug) {
+            anyhow::bail!(
+                "`{}` is the skill library manager page; edit {} with write_file instead",
+                slug,
+                self.dir.join("SKILL.md").display()
+            );
+        }
         let dir = self.references_dir();
         let path = dir.join(format!("{}.md", slug));
         let existed = path.exists();
@@ -112,6 +119,36 @@ impl Skills {
             },
             existed,
         ))
+    }
+
+    /// True when `slug` is the name declared by the root manager page (`SKILL.md`).
+    fn is_manager_name(&self, slug: &str) -> bool {
+        let path = self.dir.join("SKILL.md");
+        let Ok(text) = fs::read_to_string(&path) else {
+            return false;
+        };
+        let (meta, _) = parse_frontmatter(&text);
+        meta.get("name")
+            .map(|n| slugify(n) == slug)
+            .unwrap_or(false)
+    }
+
+    /// Delete a skill file. The manager page (`SKILL.md`) is protected.
+    /// Returns the deleted metadata, or `None` when no such skill exists.
+    pub fn delete(&self, name: &str) -> Result<Option<SkillMeta>> {
+        let want = slugify(name);
+        let Some(meta) = self.discover().into_iter().find(|m| m.name == want) else {
+            return Ok(None);
+        };
+        if meta.path == self.dir.join("SKILL.md") || self.is_manager_name(&meta.name) {
+            anyhow::bail!(
+                "refusing to delete the skill library manager page ({}); edit it with write_file instead",
+                meta.path.display()
+            );
+        }
+        fs::remove_file(&meta.path)
+            .with_context(|| format!("failed to delete skill: {}", meta.path.display()))?;
+        Ok(Some(meta))
     }
 
     /// Render the skill index injected into the system prompt.
@@ -231,6 +268,29 @@ mod tests {
         assert!(skills
             .render_index(&skills.discover())
             .contains("demo-skill"));
+        let _ = fs::remove_dir_all(&dir);
+    }
+
+    #[test]
+    fn delete_removes_a_skill_but_not_the_manager_page() {
+        let mut dir = std::env::temp_dir();
+        dir.push(format!("vola-agent-skills-delete-{}", std::process::id()));
+        let _ = fs::remove_dir_all(&dir);
+        let skills = Skills::new(dir.clone());
+        fs::create_dir_all(skills.references_dir()).unwrap();
+        fs::write(
+            dir.join("SKILL.md"),
+            "---\nname: skill-library\ndescription: manager\n---\n\nbody\n",
+        )
+        .unwrap();
+        skills.save("demo", "demo skill", "", "body").unwrap();
+        assert!(skills.save("skill-library", "dup", "", "body").is_err());
+        let deleted = skills.delete("demo").unwrap().expect("demo deleted");
+        assert_eq!(deleted.name, "demo");
+        assert!(!skills.references_dir().join("demo.md").exists());
+        assert!(skills.delete("demo").unwrap().is_none());
+        assert!(skills.delete("skill-library").is_err());
+        assert!(dir.join("SKILL.md").exists());
         let _ = fs::remove_dir_all(&dir);
     }
 

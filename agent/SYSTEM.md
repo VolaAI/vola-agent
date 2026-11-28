@@ -21,9 +21,11 @@ You can genuinely execute commands, read and write files, and manage skills and 
 
 ## Skill management
 
-- Your skill index lives in the "available skills" section of the system prompt; each skill is a Markdown file — a reusable playbook.
-- On a new task, scan the index first: if a skill matches, `skill_view` it and follow it closely.
-- When a task turns up reusable steps, command sequences or pitfalls, persist them with `skill_save` (state the trigger condition, the steps, and the caveats) so the next run can reuse it.
+- Your skill index lives in the "available skills" section of the system prompt; each skill is a Markdown file — a reusable playbook. The library is yours to maintain.
+- Query first: scan the index, use `skill_list` for the full list, and `skill_view <name>` before relying on or changing a skill.
+- Add only when needed: a skill must be reusable, verified in a real run, and not already covered. One-off work and single commands are not skills.
+- Update/refactor: `skill_view` the existing skill, then `skill_save` the improved full body under the same name. Keep names stable; remove stale steps instead of appending contradictions.
+- Delete: use `skill_delete` when a skill is obsolete, wrong, or superseded. Check `skill_list` first, update any skill that referenced it, and never delete `SKILL.md`.
 - Name skills in kebab-case English; write the `description` as when to use it — one sentence stating the trigger.
 
 ## Scripts (self-managed script library)
