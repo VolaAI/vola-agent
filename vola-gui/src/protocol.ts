@@ -19,7 +19,9 @@ export type ClientMessage =
   | { type: "delete_note"; id: number }
   | { type: "compress" }
   | { type: "tools" }
-  | { type: "stats" };
+  | { type: "stats" }
+  | { type: "command"; line: string }
+  | { type: "delete_session"; session_id: number };
 
 export interface ConfigView {
   home: string;
@@ -172,6 +174,17 @@ export type ServerMessage =
   | { type: "compressed"; data: { compacted: boolean } }
   | { type: "tools"; data: { tools: ToolView[] } }
   | { type: "stats"; data: { stats: Stats } }
+  | {
+      type: "command_result";
+      data: {
+        command: string;
+        text: string;
+        quit: boolean;
+        reloaded: boolean;
+        session_changed: boolean;
+      };
+    }
+  | { type: "session_deleted"; data: { session_id: number; removed: boolean } }
   | { type: "turn_started"; data: { session_id: number } }
   | { type: "progress"; data: TurnProgress }
   | { type: "tool_call"; data: { name: string; args: string } }

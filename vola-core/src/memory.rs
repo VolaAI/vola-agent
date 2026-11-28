@@ -203,6 +203,20 @@ impl MemoryStore {
         Ok(())
     }
 
+    /// Delete a session and everything scoped to it (messages, summaries).
+    pub fn delete_session(&mut self, id: i64) -> Result<bool> {
+        if self.session_title(id).is_none() {
+            return Ok(false);
+        }
+        self.conn
+            .execute("DELETE FROM messages WHERE session_id = ?1", params![id])?;
+        self.conn
+            .execute("DELETE FROM summaries WHERE session_id = ?1", params![id])?;
+        self.conn
+            .execute("DELETE FROM sessions WHERE id = ?1", params![id])?;
+        Ok(true)
+    }
+
     // ---------- messages ----------
 
     pub fn append_message(
@@ -583,6 +597,22 @@ mod tests {
         assert!(store.delete_skill("rust-build").unwrap());
         assert!(store.skills().unwrap().is_empty());
         assert!(!store.delete_skill("rust-build").unwrap());
+        let _ = std::fs::remove_file(path);
+    }
+
+    #[test]
+    fn delete_session_removes_its_messages_and_summaries() {
+        let (mut store, path) = temp_db();
+        let sid = store.new_session("doomed", "m").unwrap();
+        let msg = store
+            .append_message(sid, "user", "hello", None, None, None)
+            .unwrap();
+        store.add_summary(sid, msg, "summary").unwrap();
+        assert!(store.delete_session(sid).unwrap());
+        assert!(store.session_title(sid).is_none());
+        assert_eq!(store.message_count(sid).unwrap(), 0);
+        assert_eq!(store.summary_count(sid).unwrap(), 0);
+        assert!(!store.delete_session(sid).unwrap());
         let _ = std::fs::remove_file(path);
     }
 }

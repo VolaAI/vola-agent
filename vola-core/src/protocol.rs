@@ -62,6 +62,13 @@ pub enum ClientMessage {
     Compress,
     Tools,
     Stats,
+    /// Run one slash command (`/help`, `/model`, `/session`, ...).
+    Command {
+        line: String,
+    },
+    DeleteSession {
+        session_id: i64,
+    },
 }
 
 /// What the server sends back.
@@ -113,6 +120,18 @@ pub enum ServerMessage {
     },
     Stats {
         stats: Stats,
+    },
+    /// The text output of a slash command, plus flags the GUI acts on.
+    CommandResult {
+        command: String,
+        text: String,
+        quit: bool,
+        reloaded: bool,
+        session_changed: bool,
+    },
+    SessionDeleted {
+        session_id: i64,
+        removed: bool,
     },
     /// A turn started; one `turn_done` follows.
     TurnStarted {
@@ -285,6 +304,17 @@ mod tests {
         let notes: ClientMessage =
             serde_json::from_str(r#"{"type":"notes","query":"rust"}"#).unwrap();
         assert!(matches!(notes, ClientMessage::Notes { query: Some(q), .. } if q == "rust"));
+
+        let command: ClientMessage =
+            serde_json::from_str(r#"{"type":"command","line":"/help"}"#).unwrap();
+        assert!(matches!(command, ClientMessage::Command { line } if line == "/help"));
+
+        let delete: ClientMessage =
+            serde_json::from_str(r#"{"type":"delete_session","session_id":7}"#).unwrap();
+        assert!(matches!(
+            delete,
+            ClientMessage::DeleteSession { session_id: 7 }
+        ));
 
         assert!(serde_json::from_str::<ClientMessage>(r#"{"type":"nope"}"#).is_err());
     }

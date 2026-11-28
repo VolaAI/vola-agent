@@ -105,6 +105,18 @@ impl Agent {
         })
     }
 
+    /// Reload prompts, skills, scripts and the LLM client from disk/config.
+    pub fn reload(&mut self) -> Result<()> {
+        self.summarizer = prompt::load_summarizer(&self.cfg);
+        self.client = Arc::new(LlmClient::new(&self.cfg));
+        for m in self.skills.discover() {
+            self.store
+                .upsert_skill(&m.name, &m.description, &m.path.to_string_lossy())?;
+        }
+        self.scripts.write_index()?;
+        Ok(())
+    }
+
     /// Handle one user turn and return the final answer.
     pub fn respond<F>(&mut self, input: &str, log: F) -> Result<TurnReport>
     where

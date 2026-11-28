@@ -11,6 +11,7 @@ import {
   agentError,
   busy,
   cancelTurn,
+  commandLog,
   compact,
   compressHistory,
   config,
@@ -20,6 +21,7 @@ import {
   coreStatus,
   ctxChars,
   deleteNote,
+  deleteSession,
   disconnect,
   draft,
   filteredSkills,
@@ -170,16 +172,23 @@ function Sidebar() {
         <Each of={sessions()} key={(session) => session.id}>
           {(session) => (
             <View
-              class="rounded-md px-2 py-2"
+              class="rounded-md px-2 py-2 flex-row items-center gap-2"
               classList={{ "bg-sidebar-accent": sessionId() === session().id }}
-              onPress={() => resumeSession(session().id)}
             >
-              <Text class="text-sm truncate">
-                {session().title || "Untitled"}
-              </Text>
-              <Text class="text-xs text-muted-foreground">
-                {session().msg_count} msg · {formatTime(session().updated_at)}
-              </Text>
+              <View
+                class="flex-1 flex-col"
+                onPress={() => resumeSession(session().id)}
+              >
+                <Text class="text-sm truncate">
+                  {session().title || "Untitled"}
+                </Text>
+                <Text class="text-xs text-muted-foreground">
+                  {session().msg_count} msg · {formatTime(session().updated_at)}
+                </Text>
+              </View>
+              <View class="px-1" onPress={() => deleteSession(session().id)}>
+                <Text class="text-xs text-red-500">×</Text>
+              </View>
             </View>
           )}
         </Each>
@@ -272,12 +281,22 @@ function Transcript() {
         </View>
       </If>
 
-      <If when={messages().length === 0 && turn() === null}>
+      <If when={messages().length === 0 && commandLog().length === 0 && turn() === null}>
         <EmptyState />
       </If>
 
       <Each of={messages()} key={(message) => message.key}>
         {(message) => <MessageRow message={message()} />}
+      </Each>
+
+      <Each of={commandLog()} key="index">
+        {(entry) => (
+          <View class="rounded-lg border border-border bg-muted px-4 py-3">
+            <Text class="text-xs font-mono text-muted-foreground">
+              {entry()}
+            </Text>
+          </View>
+        )}
       </Each>
 
       <If when={turn() !== null}>
@@ -451,7 +470,7 @@ function Composer() {
           <Input
             multiline
             value={draft()}
-            placeholder="Ask vola…  (Enter sends, Shift+Enter adds a line)"
+            placeholder="Ask vola… or type /help  (Enter sends, Shift+Enter adds a line)"
             submitBehavior="submit"
             onChange={(event) => draft.set(event.value)}
             onSubmit={() => sendChat()}

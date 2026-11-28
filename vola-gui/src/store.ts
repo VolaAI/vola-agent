@@ -75,6 +75,7 @@ export const messages = signal<UiMessage[]>([]);
 export const summary = signal<SummaryRow | null>(null);
 export const turn = signal<TurnState | null>(null);
 export const draft = signal("");
+export const commandLog = signal<string[]>([]);
 
 // ---------- inspector ----------
 
@@ -283,6 +284,19 @@ function handle(raw: string) {
       break;
     case "stats":
       stats.set(message.data.stats);
+      break;
+    case "command_result": {
+      const data = message.data;
+      commandLog.update((list) => list.concat([data.text]));
+      if (data.session_changed) showToast(data.text);
+      // Commands can change the model, sessions, skills, notes or stats.
+      send({ type: "status" });
+      break;
+    }
+    case "session_deleted":
+      showToast(message.data.removed ? "session deleted" : "session not found");
+      send({ type: "sessions" });
+      send({ type: "stats" });
       break;
     case "models":
       models.set(message.data.models);
@@ -502,11 +516,25 @@ export function sendChat() {
   const text = draft().trim();
   if (!text || busy()) return;
   draft.set("");
+  if (text.startsWith("/")) {
+    send({ type: "command", line: text });
+    return;
+  }
+  commandLog.set([]);
   messages.update((list) =>
     list.concat([{ key: nextKey("user"), role: "user", content: text }]),
   );
   turn.set({ running: true, progress: null, tools: [], notices: [] });
   send({ type: "chat", text });
+}
+
+export function sendCommand(line: string) {
+  const text = line.trim();
+  if (text) send({ type: "command", line: text });
+}
+
+export function deleteSession(id: number) {
+  send({ type: "delete_session", session_id: id });
 }
 
 export function cancelTurn() {

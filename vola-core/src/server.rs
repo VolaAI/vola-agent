@@ -11,6 +11,7 @@ use std::sync::{Arc, Mutex};
 use std::thread;
 
 use crate::agent::{Agent, TurnEvent};
+use crate::commands;
 use crate::config::Config;
 use crate::interrupt;
 use crate::llm::{LlmClient, ModelInfo};
@@ -138,8 +139,11 @@ fn handle(stream: std::net::TcpStream, cfg: Config) -> Result<()> {
                     }
                 };
                 match handle_request(&mut guard, other) {
-                    Ok(Some(reply)) => writer.send(&reply)?,
-                    Ok(None) => {}
+                    Ok(replies) => {
+                        for reply in replies {
+                            writer.send(&reply)?;
+                        }
+                    }
                     Err(e) => writer.send(&ServerMessage::RequestError {
                         message: format!("{:#}", e),
                     })?,
@@ -242,18 +246,18 @@ fn with_store<T>(
     }
 }
 
-fn handle_request(state: &mut ConnState, request: ClientMessage) -> Result<Option<ServerMessage>> {
+fn handle_request(state: &mut ConnState, request: ClientMessage) -> Result<Vec<ServerMessage>> {
     match request {
         ClientMessage::Status => {
             // A first request may be what brings the agent up; a failure is reported in the
             // status rather than as a request error.
             let _ = ensure_agent(state);
-            Ok(Some(ServerMessage::Status(Box::new(status_view(state)?))))
+            Ok(vec![ServerMessage::Status(Box::new(status_view(state)?))])
         }
         ClientMessage::Sessions { limit } => {
             let limit = limit.unwrap_or(50).clamp(1, 500);
             let sessions = with_store(state, |store| store.sessions(limit))?;
-            Ok(Some(ServerMessage::Sessions { sessions }))
+            Ok(vec![ServerMessage::Sessions { sessions }])
         }
         ClientMessage::Messages { session_id } => {
             let (messages, summary) = with_store(state, |store| {
@@ -262,11 +266,11 @@ fn handle_request(state: &mut ConnState, request: ClientMessage) -> Result<Optio
                 let messages = store.messages_after(session_id, after)?;
                 Ok((messages, summary))
             })?;
-            Ok(Some(ServerMessage::Messages {
+            Ok(vec![ServerMessage::Messages {
                 session_id,
                 messages,
                 summary,
-            }))
+            }])
         }
         ClientMessage::NewSession => {
             let model = current_model(state);
@@ -275,7 +279,7 @@ fn handle_request(state: &mut ConnState, request: ClientMessage) -> Result<Optio
             if let Some(agent) = state.agent.as_mut() {
                 agent.session_id = id;
             }
-            Ok(Some(ServerMessage::Session { session_id: id }))
+            Ok(vec![ServerMessage::Session { session_id: id }])
         }
         ClientMessage::Resume { session_id } => {
             let title = with_store(state, |store| Ok(store.session_title(session_id)))?;
@@ -286,7 +290,7 @@ fn handle_request(state: &mut ConnState, request: ClientMessage) -> Result<Optio
             if let Some(agent) = state.agent.as_mut() {
                 agent.session_id = session_id;
             }
-            Ok(Some(ServerMessage::Session { session_id }))
+            Ok(vec![ServerMessage::Session { session_id }])
         }
         ClientMessage::SetModel { model } => {
             let model = model.trim().to_string();
@@ -298,34 +302,34 @@ fn handle_request(state: &mut ConnState, request: ClientMessage) -> Result<Optio
                 agent.cfg.model = model.clone();
                 agent.client = Arc::new(LlmClient::new(&agent.cfg));
             }
-            Ok(Some(ServerMessage::Model {
+            Ok(vec![ServerMessage::Model {
                 model,
                 num_ctx: state.cfg.num_ctx,
-            }))
+            }])
         }
         ClientMessage::Models => {
             let models: Vec<ModelInfo> = match state.agent.as_ref() {
                 Some(agent) => agent.client.list_models()?,
                 None => LlmClient::new(&state.cfg).list_models()?,
             };
-            Ok(Some(ServerMessage::Models { models }))
+            Ok(vec![ServerMessage::Models { models }])
         }
-        ClientMessage::Skills => Ok(Some(ServerMessage::Skills {
+        ClientMessage::Skills => Ok(vec![ServerMessage::Skills {
             skills: skills_view(state)?,
-        })),
+        }]),
         ClientMessage::Skill { name } => {
             let skills = Skills::new(state.cfg.skills_dir.clone());
             let (meta, body) = skills
                 .load(&name)
                 .ok_or_else(|| anyhow!("no skill named `{}`", name))?;
             let view = skill_view(state, &meta)?;
-            Ok(Some(ServerMessage::Skill { skill: view, body }))
+            Ok(vec![ServerMessage::Skill { skill: view, body }])
         }
         ClientMessage::Notes { query, limit } => {
             let query = query.unwrap_or_default();
             let limit = limit.unwrap_or(50).clamp(1, 500);
             let notes = with_store(state, |store| store.search_notes(&query, limit))?;
-            Ok(Some(ServerMessage::Notes { notes }))
+            Ok(vec![ServerMessage::Notes { notes }])
         }
         ClientMessage::AddNote {
             content,
@@ -338,11 +342,11 @@ fn handle_request(state: &mut ConnState, request: ClientMessage) -> Result<Optio
             let id = with_store(state, |store| {
                 store.add_note(&content, "gui", pinned, key.as_deref())
             })?;
-            Ok(Some(ServerMessage::Note { id }))
+            Ok(vec![ServerMessage::Note { id }])
         }
         ClientMessage::DeleteNote { id } => {
             let removed = with_store(state, |store| store.delete_note(id))?;
-            Ok(Some(ServerMessage::Deleted { id, removed }))
+            Ok(vec![ServerMessage::Deleted { id, removed }])
         }
         ClientMessage::Compress => {
             let agent = state
@@ -350,17 +354,68 @@ fn handle_request(state: &mut ConnState, request: ClientMessage) -> Result<Optio
                 .as_mut()
                 .ok_or_else(|| anyhow!("the model is not ready; fix the provider first"))?;
             let compacted = agent.force_compress()?;
-            Ok(Some(ServerMessage::Compressed { compacted }))
+            Ok(vec![ServerMessage::Compressed { compacted }])
         }
-        ClientMessage::Tools => Ok(Some(ServerMessage::Tools {
+        ClientMessage::Tools => Ok(vec![ServerMessage::Tools {
             tools: tools_view(),
-        })),
+        }]),
         ClientMessage::Stats => {
             let stats: Stats = with_store(state, |store| store.stats())?;
-            Ok(Some(ServerMessage::Stats { stats }))
+            Ok(vec![ServerMessage::Stats { stats }])
+        }
+        ClientMessage::Command { line } => {
+            if line.trim() == "/help" || line.trim() == "/?" {
+                return Ok(vec![ServerMessage::CommandResult {
+                    command: line,
+                    text: commands::help_text().to_string(),
+                    quit: false,
+                    reloaded: false,
+                    session_changed: false,
+                }]);
+            }
+            let (output, new_session, new_model) = {
+                let agent = state
+                    .agent
+                    .as_mut()
+                    .ok_or_else(|| anyhow!("the model is not ready; fix the provider first"))?;
+                let output = commands::execute(agent, &line)?;
+                (output, agent.session_id, agent.cfg.model.clone())
+            };
+            state.cfg.model = new_model;
+            let mut replies = vec![ServerMessage::CommandResult {
+                command: line,
+                text: output.text,
+                quit: output.quit,
+                reloaded: output.reloaded,
+                session_changed: output.session_changed,
+            }];
+            if output.session_changed {
+                state.session_id = Some(new_session);
+                replies.push(ServerMessage::Session {
+                    session_id: new_session,
+                });
+            }
+            Ok(replies)
+        }
+        ClientMessage::DeleteSession { session_id } => {
+            let removed = with_store(state, |store| store.delete_session(session_id))?;
+            let mut replies = vec![ServerMessage::SessionDeleted {
+                session_id,
+                removed,
+            }];
+            if removed && state.session_id == Some(session_id) {
+                let model = current_model(state);
+                let id = with_store(state, |store| store.new_session("", &model))?;
+                state.session_id = Some(id);
+                if let Some(agent) = state.agent.as_mut() {
+                    agent.session_id = id;
+                }
+                replies.push(ServerMessage::Session { session_id: id });
+            }
+            Ok(replies)
         }
         // Handled before this function.
-        ClientMessage::Chat { .. } | ClientMessage::Cancel => Ok(None),
+        ClientMessage::Chat { .. } | ClientMessage::Cancel => Ok(vec![]),
     }
 }
 
@@ -592,6 +647,21 @@ mod tests {
         ));
         assert_eq!(messages["type"], "messages");
         assert!(messages["data"]["messages"].as_array().unwrap().is_empty());
+
+        let help = ws.request(r#"{"type":"command","line":"/help"}"#);
+        assert_eq!(help["type"], "command_result");
+        assert!(help["data"]["text"].as_str().unwrap().contains("/help"));
+
+        // Deleting the active session replies with `session_deleted` and a fresh session.
+        ws.send(&format!(
+            r#"{{"type":"delete_session","session_id":{}}}"#,
+            session_id
+        ));
+        let deleted = ws.read();
+        assert_eq!(deleted["type"], "session_deleted");
+        assert_eq!(deleted["data"]["removed"], true);
+        let fresh = ws.read();
+        assert_eq!(fresh["type"], "session");
 
         let cancel = ws.request(r#"{"type":"cancel"}"#);
         assert_eq!(cancel["type"], "notice");

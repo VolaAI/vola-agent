@@ -6,6 +6,7 @@
 //! worker threads instead of an async runtime.
 
 pub mod agent;
+pub mod commands;
 pub mod config;
 pub mod interrupt;
 pub mod llm;

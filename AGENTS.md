@@ -29,6 +29,7 @@ vola-tui/src/repl.rs      interactive REPL and slash commands, Ctrl+C routing
 vola-tui/src/console.rs   Windows console UTF-8 setup (set/restore the code page)
 vola-core/src/lib.rs      public modules of the engine crate
 vola-core/src/agent.rs    agent loop: budget, compaction, dispatch, guards, TurnEvent
+vola-core/src/commands.rs slash commands shared by the TUI and the GUI
 vola-core/src/config.rs  config.json + env + CLI precedence, path resolution, shell detection
 vola-core/src/llm.rs      LLM client: native Ollama (/api/chat), OpenAI-compatible (/v1), DeepSeek
 vola-core/src/memory.rs   SQLite schema and queries: sessions, messages, notes, summaries, skills
@@ -151,6 +152,14 @@ the `load_from` mapping and defaults, `config.json`, `README.md`, and a parsing/
 - Skills are self-managed: `skill_list` / `skill_view` query, `skill_save` creates or rewrites
   (same name = update), and `skill_delete` retires. Deleting removes the file and the DB row;
   the manager page `SKILL.md` is protected.
+- Slash commands live in `vola-core/src/commands.rs` and are shared by the TUI and the GUI:
+  `/help`, `/model`, `/session`, `/skill`, `/script`, `/memory`, `/history`, `/reload` (plus
+  `/compress`, `/ctx`, `/tools`, `/db`, `/!`, `/clear`, `/exit`). `CommandOutput` carries the
+  text plus `quit`/`clear`/`reloaded`/`session_changed` flags; the server maps them to
+  `command_result` and an optional `session` message.
+- Session deletion removes the session row plus its messages and summaries; deleting the
+  active session creates a fresh one. The GUI exposes it per session and via
+  `delete_session`; the TUI uses `/session delete <id>`.
 - Loop guards: round limit (`max_rounds`, default 8), consecutive tool-error limit (default 3),
   and the same tool call repeated twice is rejected as a loop.
 - `run_cmd` blocks dangerous commands unless `VOLA_AGENT_ALLOW_DANGEROUS=1`; output is truncated
@@ -196,6 +205,9 @@ the `load_from` mapping and defaults, `config.json`, `README.md`, and a parsing/
 - New GUI request: add the variant to `ClientMessage` in `vola-core/src/protocol.rs`, handle it in
   `server.rs`, add a `ServerMessage` reply if needed, mirror both in `vola-gui/src/protocol.ts`,
   handle the reply in `vola-gui/src/store.ts`, and surface it in `vola-gui/src/ui.tsx`.
+- New slash command: add the arm to `commands::execute` in `vola-core/src/commands.rs` and
+  update `help_text()`; both the TUI and the GUI pick it up automatically. Use the
+  `CommandOutput` flags when the front end must react (quit/clear/reload/session change).
 - Keep user-facing behavior documented; update `README.md` when commands, config keys, file
   names or defaults change.
 
