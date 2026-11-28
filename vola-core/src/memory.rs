@@ -26,6 +26,7 @@ pub struct SessionRow {
     pub model: String,
     pub updated_at: i64,
     pub msg_count: i64,
+    pub pinned: bool,
 }
 
 #[derive(Debug, Clone, Serialize)]
@@ -80,6 +81,7 @@ impl MemoryStore {
                 id INTEGER PRIMARY KEY AUTOINCREMENT,
                 title TEXT NOT NULL DEFAULT '',
                 model TEXT NOT NULL DEFAULT '',
+                pinned INTEGER NOT NULL DEFAULT 0,
                 created_at INTEGER NOT NULL,
                 updated_at INTEGER NOT NULL
             );
@@ -125,6 +127,8 @@ impl MemoryStore {
         )?;
         // Older databases predate tool_call_id; add it without losing data.
         self.ensure_column("messages", "tool_call_id", "TEXT")?;
+        // Older databases predate pinning sessions.
+        self.ensure_column("sessions", "pinned", "INTEGER NOT NULL DEFAULT 0")?;
         Ok(())
     }
 
@@ -157,9 +161,9 @@ impl MemoryStore {
 
     pub fn sessions(&self, limit: i64) -> Result<Vec<SessionRow>> {
         let mut stmt = self.conn.prepare(
-            "SELECT s.id, s.title, s.model, s.updated_at,
+            "SELECT s.id, s.title, s.model, s.updated_at, s.pinned,
                     (SELECT COUNT(*) FROM messages m WHERE m.session_id = s.id)
-             FROM sessions s ORDER BY s.updated_at DESC LIMIT ?1",
+             FROM sessions s ORDER BY s.pinned DESC, s.updated_at DESC LIMIT ?1",
         )?;
         let rows = stmt
             .query_map(params![limit], |r| {
@@ -168,7 +172,8 @@ impl MemoryStore {
                     title: r.get(1)?,
                     model: r.get(2)?,
                     updated_at: r.get(3)?,
-                    msg_count: r.get(4)?,
+                    pinned: r.get::<_, i64>(4)? != 0,
+                    msg_count: r.get(5)?,
                 })
             })?
             .collect::<std::result::Result<Vec<_>, _>>()?;
@@ -193,6 +198,22 @@ impl MemoryStore {
             params![id, title],
         )?;
         Ok(())
+    }
+
+    /// Rename a session; `false` when no session has that id.
+    pub fn set_session_title(&mut self, id: i64, title: &str) -> Result<bool> {
+        Ok(self.conn.execute(
+            "UPDATE sessions SET title = ?2 WHERE id = ?1",
+            params![id, title],
+        )? > 0)
+    }
+
+    /// Pin or unpin a session so it sorts to the top; `false` when no session has that id.
+    pub fn set_session_pinned(&mut self, id: i64, pinned: bool) -> Result<bool> {
+        Ok(self.conn.execute(
+            "UPDATE sessions SET pinned = ?2 WHERE id = ?1",
+            params![id, pinned as i64],
+        )? > 0)
     }
 
     pub fn touch_session(&mut self, id: i64) -> Result<()> {
@@ -486,8 +507,9 @@ pub fn render_message(role: &str, content: &str, tool_name: Option<&str>) -> Str
 
 pub fn session_line(s: &SessionRow) -> String {
     format!(
-        "#{:>3}  {}  ({} messages, {}, {})",
+        "#{:>3}  {}{}  ({} messages, {}, {})",
         s.id,
+        if s.pinned { "📌 " } else { "" },
         if s.title.is_empty() {
             "untitled"
         } else {
@@ -597,6 +619,27 @@ mod tests {
         assert!(store.delete_skill("rust-build").unwrap());
         assert!(store.skills().unwrap().is_empty());
         assert!(!store.delete_skill("rust-build").unwrap());
+        let _ = std::fs::remove_file(path);
+    }
+
+    #[test]
+    fn rename_and_pin_session() {
+        let (mut store, path) = temp_db();
+        let a = store.new_session("first", "m").unwrap();
+        let b = store.new_session("second", "m").unwrap();
+        assert!(store.set_session_title(a, "renamed").unwrap());
+        assert_eq!(store.session_title(a).as_deref(), Some("renamed"));
+        assert!(!store.set_session_title(999, "x").unwrap());
+        // Pinning sorts a session to the top even when it is older.
+        assert!(store.set_session_pinned(a, true).unwrap());
+        let rows = store.sessions(10).unwrap();
+        assert_eq!(rows[0].id, a);
+        assert!(rows[0].pinned);
+        assert!(rows.iter().any(|r| r.id == b && !r.pinned));
+        assert!(store.set_session_pinned(a, false).unwrap());
+        let rows = store.sessions(10).unwrap();
+        assert!(rows.iter().all(|r| !r.pinned));
+        assert!(!store.set_session_pinned(999, true).unwrap());
         let _ = std::fs::remove_file(path);
     }
 

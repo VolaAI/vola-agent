@@ -22,7 +22,9 @@ export type ClientMessage =
   | { type: "stats" }
   | { type: "command"; line: string }
   | { type: "complete"; line: string }
-  | { type: "delete_session"; session_id: number };
+  | { type: "delete_session"; session_id: number }
+  | { type: "rename_session"; session_id: number; title: string }
+  | { type: "pin_session"; session_id: number; pinned: boolean };
 
 export interface ConfigView {
   home: string;
@@ -61,6 +63,7 @@ export interface SessionRow {
   model: string;
   updated_at: number;
   msg_count: number;
+  pinned: boolean;
 }
 
 export interface NoteRow {
@@ -187,6 +190,11 @@ export type ServerMessage =
     }
   | { type: "completions"; data: { line: string; candidates: string[] } }
   | { type: "session_deleted"; data: { session_id: number; removed: boolean } }
+  | { type: "session_renamed"; data: { session_id: number; renamed: boolean } }
+  | {
+      type: "session_pinned";
+      data: { session_id: number; pinned: boolean; updated: boolean };
+    }
   | { type: "turn_started"; data: { session_id: number } }
   | { type: "progress"; data: TurnProgress }
   | { type: "tool_call"; data: { name: string; args: string } }

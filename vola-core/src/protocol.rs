@@ -73,6 +73,14 @@ pub enum ClientMessage {
     DeleteSession {
         session_id: i64,
     },
+    RenameSession {
+        session_id: i64,
+        title: String,
+    },
+    PinSession {
+        session_id: i64,
+        pinned: bool,
+    },
 }
 
 /// What the server sends back.
@@ -140,6 +148,15 @@ pub enum ServerMessage {
     SessionDeleted {
         session_id: i64,
         removed: bool,
+    },
+    SessionRenamed {
+        session_id: i64,
+        renamed: bool,
+    },
+    SessionPinned {
+        session_id: i64,
+        pinned: bool,
+        updated: bool,
     },
     /// A turn started; one `turn_done` follows.
     TurnStarted {
@@ -322,6 +339,24 @@ mod tests {
         assert!(matches!(
             delete,
             ClientMessage::DeleteSession { session_id: 7 }
+        ));
+
+        let rename: ClientMessage =
+            serde_json::from_str(r#"{"type":"rename_session","session_id":7,"title":"work"}"#)
+                .unwrap();
+        assert!(matches!(
+            rename,
+            ClientMessage::RenameSession { session_id: 7, title } if title == "work"
+        ));
+
+        let pin: ClientMessage =
+            serde_json::from_str(r#"{"type":"pin_session","session_id":7,"pinned":true}"#).unwrap();
+        assert!(matches!(
+            pin,
+            ClientMessage::PinSession {
+                session_id: 7,
+                pinned: true
+            }
         ));
 
         let complete: ClientMessage =

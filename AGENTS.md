@@ -165,6 +165,10 @@ the `load_from` mapping and defaults, `config.json`, `README.md`, and a parsing/
   session switches to the most recent remaining session, or creates a fresh one when none are
   left, so deleting the first (active) session visibly removes it. The GUI asks for confirmation
   and exposes it per session and via `delete_session`; the TUI uses `/session delete <id>`.
+- Sessions can be renamed (`rename_session`) and pinned to the top (`pin_session`); pinned
+  sessions sort first (`sessions()` orders by `pinned DESC, updated_at DESC`). The GUI exposes
+  both from each session's "⋯" menu (Rename / Pin to top / Delete); the TUI shows a 📌 marker in
+  `/session list`.
 - Loop guards: round limit (`max_rounds`, default 8), consecutive tool-error limit (default 3),
   and the same tool call repeated twice is rejected as a loop.
 - `run_cmd` blocks dangerous commands unless `VOLA_AGENT_ALLOW_DANGEROUS=1`; output is truncated

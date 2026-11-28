@@ -1,7 +1,7 @@
 // The GUI: a native TSX front end for the vola agent core.
 
-import { Text, View, Scroll, effect, signal, type ScrollRef } from "nsh";
-import { Input } from "nsh/base";
+import { Text, View, Scroll, effect, signal, type InputRef, type ScrollRef } from "nsh";
+import { Dialog, Input, Menu, MenuItem, MenuSeparator } from "nsh/base";
 import { CoreServer } from "vola-gui-native";
 
 import type { TurnProgress } from "./protocol";
@@ -11,6 +11,7 @@ import {
   agentError,
   busy,
   cancelTurn,
+  closeRename,
   commandLog,
   compact,
   completeDraft,
@@ -39,9 +40,13 @@ import {
   notePinned,
   notes,
   numCtx,
+  openRename,
   openSkill,
+  pinSession,
   preview,
   refresh,
+  renameDraft,
+  renameTarget,
   resumeSession,
   selectedSkill,
   sendChat,
@@ -51,6 +56,7 @@ import {
   setModel,
   skillQuery,
   stats,
+  submitRename,
   summary,
   toast,
   toggleInspector,
@@ -140,6 +146,7 @@ function Shell() {
       <If when={inspector() !== null}>
         <Inspector />
       </If>
+      <RenameDialog />
     </View>
   );
 }
@@ -181,15 +188,43 @@ function Sidebar() {
                 onPress={() => resumeSession(session().id)}
               >
                 <Text class="text-sm truncate">
+                  {session().pinned ? "📌 " : ""}
                   {session().title || "Untitled"}
                 </Text>
                 <Text class="text-xs text-muted-foreground">
                   {session().msg_count} msg · {formatTime(session().updated_at)}
                 </Text>
               </View>
-              <View class="px-1" onPress={() => deleteSession(session().id)}>
-                <Text class="text-xs text-red-500">×</Text>
-              </View>
+              <Menu
+                trigger={
+                  <View class="px-1">
+                    <Text class="text-xs text-muted-foreground">⋯</Text>
+                  </View>
+                }
+                popupClass="rounded-md border border-border bg-card p-1 shadow-lg"
+              >
+                <MenuItem
+                  onSelect={() => openRename(session().id, session().title)}
+                  class="rounded px-3 py-1.5"
+                >
+                  <Text class="text-sm">Rename</Text>
+                </MenuItem>
+                <MenuItem
+                  onSelect={() => pinSession(session().id, !session().pinned)}
+                  class="rounded px-3 py-1.5"
+                >
+                  <Text class="text-sm">
+                    {session().pinned ? "Unpin" : "Pin to top"}
+                  </Text>
+                </MenuItem>
+                <MenuSeparator class="my-1 h-px bg-border" />
+                <MenuItem
+                  onSelect={() => deleteSession(session().id)}
+                  class="rounded px-3 py-1.5"
+                >
+                  <Text class="text-sm text-red-500">Delete</Text>
+                </MenuItem>
+              </Menu>
             </View>
           )}
         </Each>
@@ -220,6 +255,36 @@ function SidebarButton(props: { label: string; tab: InspectorTab }) {
       <Text class="text-sm">{props.label}</Text>
       <Text class="text-xs text-muted-foreground">›</Text>
     </View>
+  );
+}
+
+function RenameDialog() {
+  let input: InputRef | undefined;
+  return (
+    <Dialog
+      open={renameTarget() !== null}
+      onOpen={() => input?.focus()}
+      onOpenChange={(event) => {
+        if (!event.open) closeRename();
+      }}
+      backdropClass="bg-black/40"
+      class="m-auto w-96 gap-3 rounded-2xl border border-border bg-card p-5"
+    >
+      <Text class="text-base font-semibold">Rename session</Text>
+      <Input
+        ref={(node) => (input = node)}
+        value={renameDraft()}
+        onChange={(event) => renameDraft.set(event.value)}
+        onSubmit={() => submitRename()}
+        submitBehavior="submit"
+        placeholder="Session title"
+        class="rounded-md border border-border bg-background px-3 py-2 text-sm"
+      />
+      <View class="flex-row justify-end gap-2">
+        <PressButton label="Cancel" onPress={closeRename} />
+        <PressButton label="Save" primary onPress={submitRename} />
+      </View>
+    </Dialog>
   );
 }
 

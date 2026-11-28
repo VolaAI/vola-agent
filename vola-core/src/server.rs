@@ -426,6 +426,22 @@ fn handle_request(state: &mut ConnState, request: ClientMessage) -> Result<Vec<S
             }
             Ok(replies)
         }
+        ClientMessage::RenameSession { session_id, title } => {
+            let title = title.trim().to_string();
+            let renamed = with_store(state, |store| store.set_session_title(session_id, &title))?;
+            Ok(vec![ServerMessage::SessionRenamed {
+                session_id,
+                renamed,
+            }])
+        }
+        ClientMessage::PinSession { session_id, pinned } => {
+            let updated = with_store(state, |store| store.set_session_pinned(session_id, pinned))?;
+            Ok(vec![ServerMessage::SessionPinned {
+                session_id,
+                pinned,
+                updated,
+            }])
+        }
         // Handled before this function.
         ClientMessage::Chat { .. } | ClientMessage::Cancel => Ok(vec![]),
     }
@@ -671,6 +687,20 @@ mod tests {
             .unwrap()
             .iter()
             .any(|c| c == "/session"));
+
+        let renamed = ws.request(&format!(
+            r#"{{"type":"rename_session","session_id":{},"title":"renamed"}}"#,
+            session_id
+        ));
+        assert_eq!(renamed["type"], "session_renamed");
+        assert_eq!(renamed["data"]["renamed"], true);
+
+        let pinned = ws.request(&format!(
+            r#"{{"type":"pin_session","session_id":{},"pinned":true}}"#,
+            session_id
+        ));
+        assert_eq!(pinned["type"], "session_pinned");
+        assert_eq!(pinned["data"]["updated"], true);
 
         // Deleting the active session replies with `session_deleted` and a session to switch to.
         ws.send(&format!(

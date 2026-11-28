@@ -69,6 +69,8 @@ export const budgetChars = signal(0);
 export const ctxChars = signal<number | null>(null);
 export const agentError = signal<string | null>(null);
 export const sessionId = signal<number | null>(null);
+export const renameTarget = signal<{ id: number; title: string } | null>(null);
+export const renameDraft = signal("");
 
 // ---------- conversation ----------
 
@@ -310,6 +312,20 @@ function handle(raw: string) {
       showToast(message.data.removed ? "session deleted" : "session not found");
       send({ type: "sessions" });
       send({ type: "stats" });
+      break;
+    case "session_renamed":
+      showToast(message.data.renamed ? "session renamed" : "session not found");
+      send({ type: "sessions" });
+      break;
+    case "session_pinned":
+      showToast(
+        message.data.updated
+          ? message.data.pinned
+            ? "session pinned"
+            : "session unpinned"
+          : "session not found",
+      );
+      send({ type: "sessions" });
       break;
     case "models":
       models.set(message.data.models);
@@ -578,6 +594,30 @@ export async function deleteSession(id: number) {
   if (action === "delete") {
     send({ type: "delete_session", session_id: id });
   }
+}
+
+export function openRename(id: number, title: string) {
+  renameDraft.set(title);
+  renameTarget.set({ id, title });
+}
+
+export function closeRename() {
+  renameTarget.set(null);
+}
+
+export function submitRename() {
+  const target = renameTarget();
+  if (!target) return;
+  send({
+    type: "rename_session",
+    session_id: target.id,
+    title: renameDraft().trim(),
+  });
+  renameTarget.set(null);
+}
+
+export function pinSession(id: number, pinned: boolean) {
+  send({ type: "pin_session", session_id: id, pinned });
 }
 
 export function cancelTurn() {

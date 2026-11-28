@@ -51,10 +51,10 @@ Start the core first, either from a terminal (`vola-agent serve`) or with the GU
 **Settings → Stop core** stops a server the GUI started.
 
 The GUI supports chat with live tool cards and token/context progress, cancel/stop,
-sessions (new, resume, delete with a confirmation dialog, history), model switching and listing,
-model-provider errors, compaction, the skill library, long-term memory, the tool list, and the
-same slash commands as the TUI (`/help`, `/model`, `/session`, `/skill`, `/script`, `/memory`,
-`/history`, `/reload`). Tab completes commands and subcommands.
+sessions (new, resume, rename, pin to top, delete with a confirmation dialog, history), model
+switching and listing, model-provider errors, compaction, the skill library, long-term memory,
+the tool list, and the same slash commands as the TUI (`/help`, `/model`, `/session`, `/skill`,
+`/script`, `/memory`, `/history`, `/reload`). Tab completes commands and subcommands.
 
 ### WebSocket protocol
 
@@ -63,8 +63,8 @@ carry `type` and, when they have one, a `data` payload:
 
 | Direction  | Messages                                                                                                                                                                                                                                               |
 | ---------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ |
-| GUI → core | `status`, `sessions`, `messages`, `new_session`, `resume`, `delete_session`, `chat`, `cancel`, `set_model`, `models`, `skills`, `skill`, `notes`, `add_note`, `delete_note`, `compress`, `tools`, `stats`, `command`, `complete` |
-| core → GUI | `ready`, `status`, `sessions`, `messages`, `session`, `session_deleted`, `model`, `models`, `skills`, `skill`, `notes`, `note`, `deleted`, `compressed`, `tools`, `stats`, `command_result`, `completions`, `turn_started`, `progress`, `tool_call`, `tool_result`, `notice`, `turn_done`, `error`, `pong` |
+| GUI → core | `status`, `sessions`, `messages`, `new_session`, `resume`, `delete_session`, `rename_session`, `pin_session`, `chat`, `cancel`, `set_model`, `models`, `skills`, `skill`, `notes`, `add_note`, `delete_note`, `compress`, `tools`, `stats`, `command`, `complete` |
+| core → GUI | `ready`, `status`, `sessions`, `messages`, `session`, `session_deleted`, `session_renamed`, `session_pinned`, `model`, `models`, `skills`, `skill`, `notes`, `note`, `deleted`, `compressed`, `tools`, `stats`, `command_result`, `completions`, `turn_started`, `progress`, `tool_call`, `tool_result`, `notice`, `turn_done`, `error`, `pong` |
 
 A turn streams `turn_started` → `progress` / `tool_call` / `tool_result` / `notice` →
 `turn_done`. `cancel` sets the same cancellation flag the REPL uses, so the agent stops at
