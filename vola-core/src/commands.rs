@@ -39,6 +39,73 @@ pub fn is_command(line: &str) -> bool {
     line.trim_start().starts_with('/')
 }
 
+/// Every command name, for completion and help.
+pub const COMMANDS: &[&str] = &[
+    "/help",
+    "/model",
+    "/session",
+    "/skill",
+    "/script",
+    "/memory",
+    "/history",
+    "/reload",
+    "/compress",
+    "/ctx",
+    "/tools",
+    "/db",
+    "/!",
+    "/clear",
+    "/exit",
+    // Backward-compatible aliases.
+    "/new",
+    "/resume",
+    "/note",
+    "/models",
+    "/sessions",
+    "/skills",
+    "/scripts",
+    "/notes",
+];
+
+/// Complete a partial command line: command names, or the subcommands of a command.
+pub fn complete(prefix: &str) -> Vec<String> {
+    let trimmed = prefix.trim_start();
+    if !trimmed.starts_with('/') {
+        return Vec::new();
+    }
+    let (cmd, rest) = match trimmed.split_once(char::is_whitespace) {
+        Some((c, r)) => (c, r),
+        None => (trimmed, ""),
+    };
+    if rest.is_empty() && !trimmed.ends_with(char::is_whitespace) {
+        let mut out: Vec<String> = COMMANDS
+            .iter()
+            .filter(|c| c.starts_with(trimmed))
+            .map(|c| c.to_string())
+            .collect();
+        out.sort();
+        out.dedup();
+        return out;
+    }
+    let subs: &[&str] = match cmd {
+        "/model" => &["list"],
+        "/session" | "/sessions" => &["new", "resume", "delete", "list"],
+        "/skill" | "/skills" => &["view", "delete", "list"],
+        "/script" | "/scripts" => &["view", "delete", "list"],
+        "/memory" | "/notes" => &["add", "delete", "search", "list"],
+        _ => &[],
+    };
+    let word = rest.trim_start();
+    let mut out: Vec<String> = subs
+        .iter()
+        .filter(|s| s.starts_with(word))
+        .map(|s| format!("{} {}", cmd, s))
+        .collect();
+    out.sort();
+    out.dedup();
+    out
+}
+
 pub fn help_text() -> &'static str {
     "commands:
   /help                          this help
@@ -515,5 +582,15 @@ mod tests {
         assert!(is_command("/help"));
         assert!(is_command("  /model list"));
         assert!(!is_command("hello"));
+    }
+
+    #[test]
+    fn completes_commands_and_subcommands() {
+        assert_eq!(complete("/he"), vec!["/help"]);
+        assert!(complete("/s").contains(&"/session".to_string()));
+        assert!(complete("/s").contains(&"/skill".to_string()));
+        assert_eq!(complete("/session d"), vec!["/session delete"]);
+        assert!(complete("/session ").contains(&"/session new".to_string()));
+        assert!(complete("hello").is_empty());
     }
 }

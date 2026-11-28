@@ -293,6 +293,18 @@ function handle(raw: string) {
       send({ type: "status" });
       break;
     }
+    case "completions": {
+      const { line, candidates } = message.data;
+      if (candidates.length === 0) break;
+      if (candidates.length === 1) {
+        draft.set(candidates[0]);
+      } else {
+        const common = longestCommonPrefix(candidates);
+        if (common.length > line.length) draft.set(common);
+        showToast(candidates.join("  "));
+      }
+      break;
+    }
     case "session_deleted":
       showToast(message.data.removed ? "session deleted" : "session not found");
       send({ type: "sessions" });
@@ -531,6 +543,25 @@ export function sendChat() {
 export function sendCommand(line: string) {
   const text = line.trim();
   if (text) send({ type: "command", line: text });
+}
+
+export function completeDraft() {
+  const line = draft();
+  if (!line.trim().startsWith("/")) return;
+  send({ type: "complete", line });
+}
+
+function longestCommonPrefix(values: string[]): string {
+  if (values.length === 0) return "";
+  let prefix = values[0];
+  for (const value of values.slice(1)) {
+    let i = 0;
+    while (i < prefix.length && i < value.length && prefix[i] === value[i]) {
+      i += 1;
+    }
+    prefix = prefix.slice(0, i);
+  }
+  return prefix;
 }
 
 export function deleteSession(id: number) {

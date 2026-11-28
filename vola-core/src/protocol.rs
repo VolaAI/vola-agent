@@ -66,6 +66,10 @@ pub enum ClientMessage {
     Command {
         line: String,
     },
+    /// Ask for completion candidates for a partial command line.
+    Complete {
+        line: String,
+    },
     DeleteSession {
         session_id: i64,
     },
@@ -128,6 +132,10 @@ pub enum ServerMessage {
         quit: bool,
         reloaded: bool,
         session_changed: bool,
+    },
+    Completions {
+        line: String,
+        candidates: Vec<String>,
     },
     SessionDeleted {
         session_id: i64,
@@ -315,6 +323,10 @@ mod tests {
             delete,
             ClientMessage::DeleteSession { session_id: 7 }
         ));
+
+        let complete: ClientMessage =
+            serde_json::from_str(r#"{"type":"complete","line":"/se"}"#).unwrap();
+        assert!(matches!(complete, ClientMessage::Complete { line } if line == "/se"));
 
         assert!(serde_json::from_str::<ClientMessage>(r#"{"type":"nope"}"#).is_err());
     }

@@ -13,6 +13,7 @@ import {
   cancelTurn,
   commandLog,
   compact,
+  completeDraft,
   compressHistory,
   config,
   connect,
@@ -472,6 +473,10 @@ function Composer() {
             value={draft()}
             placeholder="Ask vola… or type /help  (Enter sends, Shift+Enter adds a line)"
             submitBehavior="submit"
+            captureKeys={["tab"]}
+            onKeyDown={(event) => {
+              if (event.key === "Tab") completeDraft();
+            }}
             onChange={(event) => draft.set(event.value)}
             onSubmit={() => sendChat()}
             class="rounded-lg border border-border bg-card px-3 py-2 text-sm"

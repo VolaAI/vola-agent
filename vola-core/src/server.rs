@@ -363,6 +363,10 @@ fn handle_request(state: &mut ConnState, request: ClientMessage) -> Result<Vec<S
             let stats: Stats = with_store(state, |store| store.stats())?;
             Ok(vec![ServerMessage::Stats { stats }])
         }
+        ClientMessage::Complete { line } => Ok(vec![ServerMessage::Completions {
+            line: line.clone(),
+            candidates: commands::complete(&line),
+        }]),
         ClientMessage::Command { line } => {
             if line.trim() == "/help" || line.trim() == "/?" {
                 return Ok(vec![ServerMessage::CommandResult {
@@ -651,6 +655,14 @@ mod tests {
         let help = ws.request(r#"{"type":"command","line":"/help"}"#);
         assert_eq!(help["type"], "command_result");
         assert!(help["data"]["text"].as_str().unwrap().contains("/help"));
+
+        let completions = ws.request(r#"{"type":"complete","line":"/se"}"#);
+        assert_eq!(completions["type"], "completions");
+        assert!(completions["data"]["candidates"]
+            .as_array()
+            .unwrap()
+            .iter()
+            .any(|c| c == "/session"));
 
         // Deleting the active session replies with `session_deleted` and a fresh session.
         ws.send(&format!(

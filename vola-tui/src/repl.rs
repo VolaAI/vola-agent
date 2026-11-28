@@ -30,7 +30,12 @@ pub fn run(mut agent: Agent) -> Result<()> {
             println!("\n(input closed, exiting)");
             break;
         };
-        let input = line.trim().to_string();
+        let raw = line.trim_end_matches('\r');
+        let input = if raw.contains('\t') {
+            expand_tabs(raw)
+        } else {
+            raw.trim().to_string()
+        };
         if input.is_empty() {
             continue;
         }
@@ -274,6 +279,21 @@ fn compact(n: u64) -> String {
         format!("{:.1}k", n as f64 / 1000.0)
     } else {
         n.to_string()
+    }
+}
+
+/// Expand a Tab in a line-buffered input: complete the command before the first Tab.
+/// One candidate replaces the line; several are printed and the prefix is kept.
+fn expand_tabs(line: &str) -> String {
+    let prefix = line.split('\t').next().unwrap_or(line);
+    let candidates = commands::complete(prefix);
+    match candidates.as_slice() {
+        [] => prefix.trim().to_string(),
+        [one] => one.clone(),
+        many => {
+            println!("{}", many.join("  "));
+            prefix.trim_end().to_string()
+        }
     }
 }
 

@@ -21,6 +21,7 @@ export type ClientMessage =
   | { type: "tools" }
   | { type: "stats" }
   | { type: "command"; line: string }
+  | { type: "complete"; line: string }
   | { type: "delete_session"; session_id: number };
 
 export interface ConfigView {
@@ -184,6 +185,7 @@ export type ServerMessage =
         session_changed: boolean;
       };
     }
+  | { type: "completions"; data: { line: string; candidates: string[] } }
   | { type: "session_deleted"; data: { session_id: number; removed: boolean } }
   | { type: "turn_started"; data: { session_id: number } }
   | { type: "progress"; data: TurnProgress }

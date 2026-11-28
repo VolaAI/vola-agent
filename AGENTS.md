@@ -157,6 +157,8 @@ the `load_from` mapping and defaults, `config.json`, `README.md`, and a parsing/
   `/compress`, `/ctx`, `/tools`, `/db`, `/!`, `/clear`, `/exit`). `CommandOutput` carries the
   text plus `quit`/`clear`/`reloaded`/`session_changed` flags; the server maps them to
   `command_result` and an optional `session` message.
+- Command completion is `commands::complete` (command names and subcommands). The GUI sends
+  `complete` and applies `completions` on Tab; the TUI expands a Tab when the line is submitted.
 - Session deletion removes the session row plus its messages and summaries; deleting the
   active session creates a fresh one. The GUI exposes it per session and via
   `delete_session`; the TUI uses `/session delete <id>`.
@@ -205,8 +207,8 @@ the `load_from` mapping and defaults, `config.json`, `README.md`, and a parsing/
 - New GUI request: add the variant to `ClientMessage` in `vola-core/src/protocol.rs`, handle it in
   `server.rs`, add a `ServerMessage` reply if needed, mirror both in `vola-gui/src/protocol.ts`,
   handle the reply in `vola-gui/src/store.ts`, and surface it in `vola-gui/src/ui.tsx`.
-- New slash command: add the arm to `commands::execute` in `vola-core/src/commands.rs` and
-  update `help_text()`; both the TUI and the GUI pick it up automatically. Use the
+- New slash command: add the arm to `commands::execute` in `vola-core/src/commands.rs`, update
+  `help_text()` and `COMMANDS`/`complete()`, and both the TUI and the GUI pick it up. Use the
   `CommandOutput` flags when the front end must react (quit/clear/reload/session change).
 - Keep user-facing behavior documented; update `README.md` when commands, config keys, file
   names or defaults change.

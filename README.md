@@ -54,6 +54,7 @@ The GUI supports chat with live tool cards and token/context progress, cancel/st
 sessions (new, resume, delete, history), model switching and listing, model-provider errors,
 compaction, the skill library, long-term memory, the tool list, and the same slash commands as
 the TUI (`/help`, `/model`, `/session`, `/skill`, `/script`, `/memory`, `/history`, `/reload`).
+Tab completes commands and subcommands.
 
 ### WebSocket protocol
 
@@ -62,8 +63,8 @@ carry `type` and, when they have one, a `data` payload:
 
 | Direction  | Messages                                                                                                                                                                                                                                               |
 | ---------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ |
-| GUI → core | `status`, `sessions`, `messages`, `new_session`, `resume`, `delete_session`, `chat`, `cancel`, `set_model`, `models`, `skills`, `skill`, `notes`, `add_note`, `delete_note`, `compress`, `tools`, `stats`, `command` |
-| core → GUI | `ready`, `status`, `sessions`, `messages`, `session`, `session_deleted`, `model`, `models`, `skills`, `skill`, `notes`, `note`, `deleted`, `compressed`, `tools`, `stats`, `command_result`, `turn_started`, `progress`, `tool_call`, `tool_result`, `notice`, `turn_done`, `error`, `pong` |
+| GUI → core | `status`, `sessions`, `messages`, `new_session`, `resume`, `delete_session`, `chat`, `cancel`, `set_model`, `models`, `skills`, `skill`, `notes`, `add_note`, `delete_note`, `compress`, `tools`, `stats`, `command`, `complete` |
+| core → GUI | `ready`, `status`, `sessions`, `messages`, `session`, `session_deleted`, `model`, `models`, `skills`, `skill`, `notes`, `note`, `deleted`, `compressed`, `tools`, `stats`, `command_result`, `completions`, `turn_started`, `progress`, `tool_call`, `tool_result`, `notice`, `turn_done`, `error`, `pong` |
 
 A turn streams `turn_started` → `progress` / `tool_call` / `tool_result` / `notice` →
 `turn_done`. `cancel` sets the same cancellation flag the REPL uses, so the agent stops at
@@ -97,6 +98,8 @@ vola-agent init                         Create config.json, asset/script/skill d
 `memory add <content> [--pin]`, `memory search <keyword>`, `memory list`.
 
 REPL slash commands (shared with the GUI): `/help` `/model [name|list]` `/session [new|resume <id>|delete <id>]` `/skill [view <name>|delete <name>]` `/script [view <name>|delete <name>]` `/memory [add <text> [--pin]|delete <id>|search <q>]` `/history [n]` `/reload` `/compress` `/ctx` `/tools` `/db` `/!<command>` `/clear` `/exit`.
+
+Tab completes command names and subcommands. The GUI expands the completion immediately; the TUI reads lines in the terminal's line mode, so type the prefix, press Tab, then Enter to expand it.
 
 Ctrl+C: at the `you ›` prompt it quits; while the agent is working it cancels the current turn and returns to the prompt (a command the agent is running has its process tree killed). The cancelled model request is abandoned rather than written to the session.
 
